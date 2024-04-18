@@ -10,7 +10,6 @@
         public bool animalEndangered { get; set; }
         public DateTime animalDoA { get; set; }
         public string animalOrigin { get; set; }
-        public string animalLifeStage { get; set; }
 
     }
 }
