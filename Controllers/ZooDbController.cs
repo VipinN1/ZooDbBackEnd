@@ -4,6 +4,9 @@ using System.Data;
 using System.Data.SqlClient;
 using BackEnd.Models;
 using System;
+using System.Globalization;
+using Microsoft.Extensions.Configuration;
+using System.Text;
 
 
 
@@ -77,15 +80,71 @@ namespace BackEnd.Controllers
             return new JsonResult("New user added successfully");
         }
 
+        [HttpGet]
+        [Route("GetUserProfile")]
+        public JsonResult GetUserProfile([FromQuery] int customerId)
+        {
+            // Prepare the SQL query for retrieving user data
+            string query = @"SELECT first_name, last_name, phone_number, email, address, zip_code, date_of_birth 
+                 FROM customer WHERE customer_Id = @customerId";
+
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            UserProfile userProfile = null;
+
+            // Open a connection to the database
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                {
+                    // Add parameter to the command to prevent SQL injection
+                    // Correct the parameter name from @userId to @customerId
+                    myCommand.Parameters.AddWithValue("@customerId", customerId);
+
+                    using (SqlDataReader reader = myCommand.ExecuteReader())
+                    {
+                        // Check if a user was found
+                        if (reader.Read())
+                        {
+                            userProfile = new UserProfile
+                            {
+                                firstName = reader["first_name"].ToString(),
+                                lastName = reader["last_name"].ToString(),
+                                phoneNumber = reader["phone_number"].ToString(),
+                                email = reader["email"].ToString(),
+                                address = reader["address"].ToString(),
+                                zipCode = reader["zip_code"].ToString(),
+                                formattedDate = Convert.ToDateTime(reader["date_of_birth"])
+                            };
+                        }
+                    }
+                }
+
+            }
+
+            // Check if user data was found and return appropriate result
+            if (userProfile != null)
+            {
+                return new JsonResult(userProfile);
+            }
+            else
+            {
+                return new JsonResult("User not found");
+            }
+        }
+
+
+
         [HttpPost]
         [Route("NewUserProfile")]
         public JsonResult NewUserProfile([FromBody] UserProfile userProfile)
         {
-            // Prepare the SQL query for inserting a new user must be same as database
-            string query = "INSERT INTO customer (first_name, last_name, phone_number, email) VALUES (@firstName, @lastName, @phoneNumber, @email)";
-
-            // Create a new DataTable to store the result (although in this case, there's no result to store)
-            DataTable table = new DataTable();
+            // Prepare the SQL query for inserting a new user
+            string query = @"INSERT INTO customer (first_name, last_name, phone_number, email, address, zip_code, date_of_birth) 
+                     VALUES (@firstName, @lastName, @phoneNumber, @email, @address, @zipCode, @formattedDate)";
 
             // Get the connection string from appsettings.json
             string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
@@ -101,7 +160,9 @@ namespace BackEnd.Controllers
                     myCommand.Parameters.AddWithValue("@lastName", userProfile.lastName);
                     myCommand.Parameters.AddWithValue("@phoneNumber", userProfile.phoneNumber);
                     myCommand.Parameters.AddWithValue("@email", userProfile.email);
-
+                    myCommand.Parameters.AddWithValue("@address", userProfile.address);
+                    myCommand.Parameters.AddWithValue("@zipCode", userProfile.zipCode);
+                    myCommand.Parameters.AddWithValue("@formattedDate", userProfile.formattedDate);
 
                     // Execute the query (which in this case is an INSERT operation)
                     myCommand.ExecuteNonQuery();
@@ -114,62 +175,107 @@ namespace BackEnd.Controllers
 
 
 
-            [HttpPost]
-            [Route("NewDiet")]
-            public JsonResult NewDiet([FromBody] Diet newDiet)
+
+        [HttpPut]
+        [Route("UpdateUserProfile/{customerId}")]
+        public JsonResult UpdateUserProfile(int customerId, [FromBody] UserProfile userProfile)
+        {
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+            string updateQuery = @"
+                UPDATE customer 
+                SET 
+                    first_name = COALESCE(@firstName, first_name), 
+                    last_name = COALESCE(@lastName, last_name),
+                    phone_number = COALESCE(@phoneNumber, phone_number),
+                    address = COALESCE(@address, address),
+                    zip_code = COALESCE(@zipCode, zip_code),
+                    date_of_birth = COALESCE(@formattedDate, date_of_birth)
+                WHERE customer_id = @customerId";
+
+            using (SqlConnection con = new SqlConnection(sqlDataSource))
             {
-                // Prepare SQL queries
-                string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
-                string insertDietQuery = "INSERT INTO diet (animal_id, diet_name, diet_type, diet_schedule) VALUES (@animalID, @dietName, @dietType, @dietSchedule)";
-                string updateDietQuery = "UPDATE diet SET diet_name = @dietName, diet_type = @dietType, diet_schedule = @dietSchedule WHERE animal_id = @animalID";
-
-                // Get the connection string from appsettings.json
-                string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                // Define dietExists outside of the using block so it's accessible later
-                bool dietExists = false;
-
-                // Open a connection to the database
-                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                con.Open();
+                using (SqlCommand command = new SqlCommand(updateQuery, con))
                 {
-                    myCon.Open();
+                    command.Parameters.AddWithValue("@customerId", customerId);
+                    command.Parameters.AddWithValue("@firstName", (object)userProfile.firstName ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@lastName", (object)userProfile.lastName ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@phoneNumber", (object)userProfile.phoneNumber ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@address", (object)userProfile.address ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@zipCode", (object)userProfile.zipCode ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@formattedDate", (object)userProfile.formattedDate ?? DBNull.Value);
 
-                    // Check if animal exists and get animal_id
-                    int animalId = 0;
-                    using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery, myCon))
+                    int effectedRows = command.ExecuteNonQuery();
+                    if (effectedRows > 0)
                     {
-                        checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newDiet.animalSpecies);
-                        checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newDiet.animalDoB);
-
-                        object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
-                        if (result != null)
-                            animalId = Convert.ToInt32(result);
-                        else
-                            return new JsonResult("No such animal found");
+                        return new JsonResult("Profile updated successfully");
                     }
-
-                    // Check if diet entry exists for this animal_id
-                    using (SqlCommand checkDietCmd = new SqlCommand("SELECT COUNT(1) FROM diet WHERE animal_id = @animalID", myCon))
+                    else
                     {
-                        checkDietCmd.Parameters.AddWithValue("@animalID", animalId);
-                        dietExists = (int)checkDietCmd.ExecuteScalar() > 0;
-                    }
-
-                    // Insert or update diet information
-                    using (SqlCommand dietCmd = new SqlCommand(dietExists ? updateDietQuery : insertDietQuery, myCon))
-                    {
-                        dietCmd.Parameters.AddWithValue("@animalID", animalId);
-                        dietCmd.Parameters.AddWithValue("@dietName", newDiet.dietName);
-                        dietCmd.Parameters.AddWithValue("@dietType", newDiet.dietType);
-                        dietCmd.Parameters.AddWithValue("@dietSchedule", newDiet.dietSchedule);
-
-                        dietCmd.ExecuteNonQuery();  // Execute either update or insert
+                        return new JsonResult("No profile found or no changes detected");
                     }
                 }
-
-                // Return a response indicating success
-                return new JsonResult(dietExists ? "Diet updated successfully" : "New diet added successfully");
             }
+        }
+
+
+
+        [HttpPost]
+        [Route("NewDiet")]
+        public JsonResult NewDiet([FromBody] Diet newDiet)
+        {
+            // Prepare SQL queries
+            string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
+            string insertDietQuery = "INSERT INTO diet (animal_id, diet_name, diet_type, diet_schedule) VALUES (@animalID, @dietName, @dietType, @dietSchedule)";
+            string updateDietQuery = "UPDATE diet SET diet_name = @dietName, diet_type = @dietType, diet_schedule = @dietSchedule WHERE animal_id = @animalID";
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Define dietExists outside of the using block so it's accessible later
+            bool dietExists = false;
+
+            // Open a connection to the database
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+
+                // Check if animal exists and get animal_id
+                int animalId = 0;
+                using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery, myCon))
+                {
+                    checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newDiet.animalSpecies);
+                    checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newDiet.animalDoB);
+
+                    object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
+                    if (result != null)
+                        animalId = Convert.ToInt32(result);
+                    else
+                        return new JsonResult("No such animal found");
+                }
+
+                // Check if diet entry exists for this animal_id
+                using (SqlCommand checkDietCmd = new SqlCommand("SELECT COUNT(1) FROM diet WHERE animal_id = @animalID", myCon))
+                {
+                    checkDietCmd.Parameters.AddWithValue("@animalID", animalId);
+                    dietExists = (int)checkDietCmd.ExecuteScalar() > 0;
+                }
+
+                // Insert or update diet information
+                using (SqlCommand dietCmd = new SqlCommand(dietExists ? updateDietQuery : insertDietQuery, myCon))
+                {
+                    dietCmd.Parameters.AddWithValue("@animalID", animalId);
+                    dietCmd.Parameters.AddWithValue("@dietName", newDiet.dietName);
+                    dietCmd.Parameters.AddWithValue("@dietType", newDiet.dietType);
+                    dietCmd.Parameters.AddWithValue("@dietSchedule", newDiet.dietSchedule);
+
+                    dietCmd.ExecuteNonQuery();  // Execute either update or insert
+                }
+            }
+
+            // Return a response indicating success
+            return new JsonResult(dietExists ? "Diet updated successfully" : "New diet added successfully");
+        }
 
 
 
@@ -188,11 +294,11 @@ namespace BackEnd.Controllers
 
             // Get the connection string from appsettings.json
             string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-            
+
 
             bool vetExists = false;
 
-            
+
             // Open a connection to the database and execute the query
             using (SqlConnection myCon = new SqlConnection(sqlDataSource))
             {
@@ -205,32 +311,32 @@ namespace BackEnd.Controllers
                     checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newVetRecords.animalSpecies);
                     checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newVetRecords.animalDoB);
 
-                        object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
-                        if (result != null)
-                            animalId = Convert.ToInt32(result);
-                        else
-                            return new JsonResult("No such animal found");
+                    object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
+                    if (result != null)
+                        animalId = Convert.ToInt32(result);
+                    else
+                        return new JsonResult("No such animal found");
                 }
 
-                
-                    // Check if vet entry exists for this animal_id
-                    using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
-                    {
-                        checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
-                        vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
-                    }
 
-                    // Insert or update vet information
-                    using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
-                    {
-                        vetCmd.Parameters.AddWithValue("@animalID", animalId);
-                        vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
-                        vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
-                        vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
-                        vetCmd.Parameters.AddWithValue("@diagnosis",newVetRecords.diagnosis);
+                // Check if vet entry exists for this animal_id
+                using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
+                {
+                    checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
+                    vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
+                }
 
-                        vetCmd.ExecuteNonQuery();  // Execute either update or insert
-                    }
+                // Insert or update vet information
+                using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
+                {
+                    vetCmd.Parameters.AddWithValue("@animalID", animalId);
+                    vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
+                    vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
+                    vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
+                    vetCmd.Parameters.AddWithValue("@diagnosis", newVetRecords.diagnosis);
+
+                    vetCmd.ExecuteNonQuery();  // Execute either update or insert
+                }
             }
 
             // Return a response indicating success
@@ -391,7 +497,7 @@ namespace BackEnd.Controllers
                         myReader.Close();
                     }
                 }
-                
+
 
                 // Check if the DataTable has any rows (i.e., if the credentials are valid)
                 if (table.Rows.Count > 0)
@@ -448,73 +554,73 @@ namespace BackEnd.Controllers
         }
 
 
-                [HttpPost]
-                [Route("NewDonation")]
-                public JsonResult NewDonation([FromBody] Donation userDonation)
+        [HttpPost]
+        [Route("NewDonation")]
+        public JsonResult NewDonation([FromBody] Donation userDonation)
+        {
+            // Prepare the SQL query for inserting a new user must be same as database
+            string query = "INSERT INTO donations (donation_amount, customer_id, donation_date) VALUES (@donationAmount, @customerId, @donationDate)";
+
+            // Create a new DataTable to store the result (although in this case, there's no result to store)
+            DataTable table = new DataTable();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
                 {
-                    // Prepare the SQL query for inserting a new user must be same as database
-                    string query = "INSERT INTO donations (donation_amount, customer_id, donation_date) VALUES (@donationAmount, @customerId, @donationDate)";
-
-                    // Create a new DataTable to store the result (although in this case, there's no result to store)
-                    DataTable table = new DataTable();
-
-                    // Get the connection string from appsettings.json
-                    string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                    // Open a connection to the database and execute the query
-                    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-                    {
-                        myCon.Open();
-                        using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                        {
-                            // Add parameters to the command to prevent SQL injection
-                            myCommand.Parameters.AddWithValue("@donationAmount", userDonation.donationAmount);
-                            myCommand.Parameters.AddWithValue("@customerId", userDonation.customerId);
-                            myCommand.Parameters.AddWithValue("@donationDate", userDonation.donationDate);
+                    // Add parameters to the command to prevent SQL injection
+                    myCommand.Parameters.AddWithValue("@donationAmount", userDonation.donationAmount);
+                    myCommand.Parameters.AddWithValue("@customerId", userDonation.customerId);
+                    myCommand.Parameters.AddWithValue("@donationDate", userDonation.donationDate);
 
 
-                            // Execute the query (which in this case is an INSERT operation)
-                            myCommand.ExecuteNonQuery();
-                        }
-                    }
-
-                    // Return a response indicating success
-                    return new JsonResult("New donation added successfully");
+                    // Execute the query (which in this case is an INSERT operation)
+                    myCommand.ExecuteNonQuery();
                 }
+            }
+
+            // Return a response indicating success
+            return new JsonResult("New donation added successfully");
+        }
 
 
-                [HttpPost]
-                [Route("NewClockIn")]
-                public JsonResult NewClockIn([FromBody] ClockIn userClockIn)
+        [HttpPost]
+        [Route("NewClockIn")]
+        public JsonResult NewClockIn([FromBody] ClockIn userClockIn)
+        {
+
+            string query = "INSERT INTO emp_schedule (emp_id, clock_in, clock_out, total_hours) VALUES (@empId, @clockIn, @clockOut, @totalHours)";
+
+            DataTable table = new DataTable();
+
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
                 {
-
-                    string query = "INSERT INTO emp_schedule (emp_id, clock_in, clock_out, total_hours) VALUES (@empId, @clockIn, @clockOut, @totalHours)";
-
-                    DataTable table = new DataTable();
-
-                    string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-                    {
-                        myCon.Open();
-                        using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                        {
-                            // Add parameters to the command to prevent SQL injection
-                            myCommand.Parameters.AddWithValue("@empId", userClockIn.empId);
-                            myCommand.Parameters.AddWithValue("@clockIn", userClockIn.clockIn);
-                            myCommand.Parameters.AddWithValue("@clockOut", userClockIn.clockOut);
-                            myCommand.Parameters.AddWithValue("@totalHours", userClockIn.totalHours);
+                    // Add parameters to the command to prevent SQL injection
+                    myCommand.Parameters.AddWithValue("@empId", userClockIn.empId);
+                    myCommand.Parameters.AddWithValue("@clockIn", userClockIn.clockIn);
+                    myCommand.Parameters.AddWithValue("@clockOut", userClockIn.clockOut);
+                    myCommand.Parameters.AddWithValue("@totalHours", userClockIn.totalHours);
 
 
-                            // Execute the query (which in this case is an INSERT operation)
-                            myCommand.ExecuteNonQuery();
-                        }
-                    }
-
-                    // Return a response indicating success
-                    return new JsonResult("New clockIn added successfully");
-
+                    // Execute the query (which in this case is an INSERT operation)
+                    myCommand.ExecuteNonQuery();
                 }
+            }
+
+            // Return a response indicating success
+            return new JsonResult("New clockIn added successfully");
+
+        }
 
 
 
@@ -558,245 +664,245 @@ namespace BackEnd.Controllers
 
 
 
-            [HttpPost]
-            [Route("GenerateAnimalReport")]
-            public JsonResult GenerateAnimalReport([FromBody] dynamic data)
+        [HttpPost]
+        [Route("GenerateAnimalReport")]
+        public JsonResult GenerateAnimalReport([FromBody] dynamic data)
+        {
+            string animalSpecies = data.animalSpecies;
+            // Define the query to fetch animal data based on the given animal species
+            string query = "SELECT * FROM animal WHERE animal_species = @animalSpecies";
+
+            // Create a list to hold the results
+            List<Animal> animals = new List<Animal>();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
             {
-                string animalSpecies = data.animalSpecies;
-                // Define the query to fetch animal data based on the given animal species
-                string query = "SELECT * FROM animal WHERE animal_species = @animalSpecies";
+                myCon.Open();
 
-                // Create a list to hold the results
-                List<Animal> animals = new List<Animal>();
-
-                // Get the connection string from appsettings.json
-                string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                // Open a connection to the database and execute the query
-                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                // Use a SqlCommand to execute the query with parameterization
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
                 {
-                    myCon.Open();
+                    // Add the animal species parameter to the command
+                    myCommand.Parameters.AddWithValue("@animalSpecies", animalSpecies);
 
-                    // Use a SqlCommand to execute the query with parameterization
-                    using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                    // Execute the query and load the results into a SqlDataReader
+                    using (SqlDataReader myReader = myCommand.ExecuteReader())
                     {
-                        // Add the animal species parameter to the command
-                        myCommand.Parameters.AddWithValue("@animalSpecies", animalSpecies);
-
-                        // Execute the query and load the results into a SqlDataReader
-                        using (SqlDataReader myReader = myCommand.ExecuteReader())
+                        while (myReader.Read())
                         {
-                            while (myReader.Read())
+                            // Create a new Animal object and populate its properties
+                            Animal animal = new Animal
                             {
-                                // Create a new Animal object and populate its properties
-                                Animal animal = new Animal
-                                {
-                                    animalID = Convert.ToInt32(myReader["animal_id"]),
-                                    animalName = myReader["animal_name"].ToString(),
-                                    animalSpecies = myReader["animal_species"].ToString(),
-                                    animalGender = Convert.ToChar(myReader["animal_gender"]),
-                                    animalDoB = Convert.ToDateTime(myReader["animal_dob"]),
-                                    animalEndangered = Convert.ToBoolean(myReader["animal_endangered"]),
-                                    animalDoA = Convert.ToDateTime(myReader["animal_doa"]),
-                                    animalOrigin = myReader["animal_origin"].ToString(),
-                                    animalLifeStage = myReader["life_stage"].ToString(),
-                                };
+                                animalID = Convert.ToInt32(myReader["animal_id"]),
+                                animalName = myReader["animal_name"].ToString(),
+                                animalSpecies = myReader["animal_species"].ToString(),
+                                animalGender = Convert.ToChar(myReader["animal_gender"]),
+                                animalDoB = Convert.ToDateTime(myReader["animal_dob"]),
+                                animalEndangered = Convert.ToBoolean(myReader["animal_endangered"]),
+                                animalDoA = Convert.ToDateTime(myReader["animal_doa"]),
+                                animalOrigin = myReader["animal_origin"].ToString(),
+                                animalLifeStage = myReader["life_stage"].ToString(),
+                            };
 
-                                // Add the Animal object to the list
-                                animals.Add(animal);
-                            }
+                            // Add the Animal object to the list
+                            animals.Add(animal);
                         }
                     }
-
-                    // Close the connection
-                    myCon.Close();
                 }
 
-                // Return the list of Animal objects as a JSON response
-                return new JsonResult(animals);
+                // Close the connection
+                myCon.Close();
             }
 
+            // Return the list of Animal objects as a JSON response
+            return new JsonResult(animals);
+        }
 
-            public class EnclosureTypeRequest
+
+        public class EnclosureTypeRequest
+        {
+            public string EnclosureType { get; set; }
+        }
+
+        [HttpPost]
+        [Route("GenerateEnclosureReport")]
+        public JsonResult GenerateEnclosureReport([FromBody] EnclosureTypeRequest request)
+        {
+            // Access request.EnclosureType instead of data.enclosureType
+            string enclosureType = request.EnclosureType;
+
+            // Define the query to fetch enclosure data based on the given enclosure type
+            string query = "SELECT * FROM enclosure WHERE enclosure_type = @enclosureType";
+
+            // Create a list to hold the results
+            List<Enclosure> enclosures = new List<Enclosure>();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
             {
-                public string EnclosureType { get; set; }
-            }
+                myCon.Open();
 
-            [HttpPost]
-            [Route("GenerateEnclosureReport")]
-            public JsonResult GenerateEnclosureReport([FromBody] EnclosureTypeRequest request)
-            {
-                // Access request.EnclosureType instead of data.enclosureType
-                string enclosureType = request.EnclosureType;
-
-                // Define the query to fetch enclosure data based on the given enclosure type
-                string query = "SELECT * FROM enclosure WHERE enclosure_type = @enclosureType";
-
-                // Create a list to hold the results
-                List<Enclosure> enclosures = new List<Enclosure>();
-
-                // Get the connection string from appsettings.json
-                string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                // Open a connection to the database and execute the query
-                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                // Use a SqlCommand to execute the query with parameterization
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
                 {
-                    myCon.Open();
+                    // Add the enclosure type parameter to the command
+                    myCommand.Parameters.AddWithValue("@enclosureType", enclosureType);
 
-                    // Use a SqlCommand to execute the query with parameterization
-                    using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                    // Execute the query and load the results into a SqlDataReader
+                    using (SqlDataReader myReader = myCommand.ExecuteReader())
                     {
-                        // Add the enclosure type parameter to the command
-                        myCommand.Parameters.AddWithValue("@enclosureType", enclosureType);
-
-                        // Execute the query and load the results into a SqlDataReader
-                        using (SqlDataReader myReader = myCommand.ExecuteReader())
+                        while (myReader.Read())
                         {
-                            while (myReader.Read())
+                            // Create a new Enclosure object and populate its properties
+                            Enclosure enclosure = new Enclosure
                             {
-                                // Create a new Enclosure object and populate its properties
-                                Enclosure enclosure = new Enclosure
-                                {
-                                    enclosureID = Convert.ToInt32(myReader["enclosure_id"]),
-                                    enclosureName = myReader["enclosure_name"].ToString(),
-                                    cleaningScheduleStart = myReader.GetTimeSpan(myReader.GetOrdinal("cleaning_schedule_start")),
-                                    cleaningScheduleEnd = myReader.GetTimeSpan(myReader.GetOrdinal("cleaning_schedule_end"))
-                                };
+                                enclosureID = Convert.ToInt32(myReader["enclosure_id"]),
+                                enclosureName = myReader["enclosure_name"].ToString(),
+                                cleaningScheduleStart = myReader.GetTimeSpan(myReader.GetOrdinal("cleaning_schedule_start")),
+                                cleaningScheduleEnd = myReader.GetTimeSpan(myReader.GetOrdinal("cleaning_schedule_end"))
+                            };
 
-                                // Add the Enclosure object to the list
-                                enclosures.Add(enclosure);
-                            }
+                            // Add the Enclosure object to the list
+                            enclosures.Add(enclosure);
                         }
                     }
-
-                    // Close the connection
-                    myCon.Close();
                 }
 
-                // Return the list of Enclosure objects as a JSON response
-                return new JsonResult(enclosures);
+                // Close the connection
+                myCon.Close();
             }
 
+            // Return the list of Enclosure objects as a JSON response
+            return new JsonResult(enclosures);
+        }
 
 
-            [HttpPost]
-            [Route("GenerateSecurityReportByDates")]
-            public JsonResult GenerateSecurityReportByDates([FromBody] dynamic data)
+
+        [HttpPost]
+        [Route("GenerateSecurityReportByDates")]
+        public JsonResult GenerateSecurityReportByDates([FromBody] dynamic data)
+        {
+            // Extracting the dates from the request body
+            DateTime startDate = Convert.ToDateTime(data.startDate);
+            DateTime endDate = Convert.ToDateTime(data.endDate);
+
+            // SQL query to fetch security reports within the specified date range
+            string query = "SELECT emp_id, log_date, log_time, event_description, event_location, severity_level, log_id " +
+                        "FROM security_logs " +
+                        "WHERE log_date BETWEEN @startDate AND @endDate";
+
+            // List to hold the results
+            List<SecurityReport> securityReports = new List<SecurityReport>();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Execute the query and load the results
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
             {
-                // Extracting the dates from the request body
-                DateTime startDate = Convert.ToDateTime(data.startDate);
-                DateTime endDate = Convert.ToDateTime(data.endDate);
-
-                // SQL query to fetch security reports within the specified date range
-                string query = "SELECT emp_id, log_date, log_time, event_description, event_location, severity_level, log_id " +
-                            "FROM security_logs " +
-                            "WHERE log_date BETWEEN @startDate AND @endDate";
-
-                        // List to hold the results
-                        List<SecurityReport> securityReports = new List<SecurityReport>();
-
-                // Get the connection string from appsettings.json
-                string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                // Execute the query and load the results
-                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                myCon.Open();
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
                 {
-                    myCon.Open();
-                    using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                    // Adding parameters to the command
+                    myCommand.Parameters.AddWithValue("@startDate", startDate);
+                    myCommand.Parameters.AddWithValue("@endDate", endDate);
+
+                    using (SqlDataReader myReader = myCommand.ExecuteReader())
                     {
-                        // Adding parameters to the command
-                        myCommand.Parameters.AddWithValue("@startDate", startDate);
-                        myCommand.Parameters.AddWithValue("@endDate", endDate);
-
-                        using (SqlDataReader myReader = myCommand.ExecuteReader())
+                        while (myReader.Read())
                         {
-                            while (myReader.Read())
+                            // Create a SecurityReport object and populate its properties
+                            SecurityReport securityReport = new SecurityReport
                             {
-                                        // Create a SecurityReport object and populate its properties
-                                        SecurityReport securityReport = new SecurityReport
-                                        {
-                                            empID = Convert.ToInt32(myReader["emp_id"]),
-                                            date = Convert.ToDateTime(myReader["log_date"]),
-                                            time = myReader.GetTimeSpan(myReader.GetOrdinal("log_time")),
-                                            eventDescription = myReader["event_description"].ToString(),
-                                            location = myReader["event_location"].ToString(),
-                                            severityLevel = myReader["severity_level"].ToString(),
-                                            logID = Convert.ToInt32(myReader["log_id"])
-                                };
+                                empID = Convert.ToInt32(myReader["emp_id"]),
+                                date = Convert.ToDateTime(myReader["log_date"]),
+                                time = myReader.GetTimeSpan(myReader.GetOrdinal("log_time")),
+                                eventDescription = myReader["event_description"].ToString(),
+                                location = myReader["event_location"].ToString(),
+                                severityLevel = myReader["severity_level"].ToString(),
+                                logID = Convert.ToInt32(myReader["log_id"])
+                            };
 
-                                // Add the object to the list
-                                securityReports.Add(securityReport);
-                            }
+                            // Add the object to the list
+                            securityReports.Add(securityReport);
                         }
                     }
-                    myCon.Close();
                 }
-
-                // Return the list of SecurityReport objects as a JSON response
-                return new JsonResult(securityReports);
+                myCon.Close();
             }
 
+            // Return the list of SecurityReport objects as a JSON response
+            return new JsonResult(securityReports);
+        }
 
 
 
-                [HttpPost]
-                [Route("GenerateSecurityReportByDatesAndLocation")]
-                public JsonResult GenerateSecurityReportByDatesAndLocation([FromBody] dynamic data)
+
+        [HttpPost]
+        [Route("GenerateSecurityReportByDatesAndLocation")]
+        public JsonResult GenerateSecurityReportByDatesAndLocation([FromBody] dynamic data)
+        {
+            // Extracting the dates and location from the request body
+            DateTime startDate = Convert.ToDateTime(data.startDate);
+            DateTime endDate = Convert.ToDateTime(data.endDate);
+            string location = data.location;
+
+            // SQL query to fetch security reports within the specified date range and location
+            string query = "SELECT emp_id, log_date, log_time, event_description, event_location, severity_level, log_id " +
+                        "FROM security_logs " +
+                        "WHERE log_date BETWEEN @startDate AND @endDate AND event_location = @location";
+
+            // List to hold the results
+            List<SecurityReport> securityReports = new List<SecurityReport>();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Execute the query and load the results
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
                 {
-                    // Extracting the dates and location from the request body
-                    DateTime startDate = Convert.ToDateTime(data.startDate);
-                    DateTime endDate = Convert.ToDateTime(data.endDate);
-                    string location = data.location;
+                    // Adding parameters to the command
+                    myCommand.Parameters.AddWithValue("@startDate", startDate);
+                    myCommand.Parameters.AddWithValue("@endDate", endDate);
+                    myCommand.Parameters.AddWithValue("@location", location);
 
-                    // SQL query to fetch security reports within the specified date range and location
-                    string query = "SELECT emp_id, log_date, log_time, event_description, event_location, severity_level, log_id " +
-                                "FROM security_logs " +
-                                "WHERE log_date BETWEEN @startDate AND @endDate AND event_location = @location";
-
-                    // List to hold the results
-                    List<SecurityReport> securityReports = new List<SecurityReport>();
-
-                    // Get the connection string from appsettings.json
-                    string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                    // Execute the query and load the results
-                    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                    using (SqlDataReader myReader = myCommand.ExecuteReader())
                     {
-                        myCon.Open();
-                        using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                        while (myReader.Read())
                         {
-                            // Adding parameters to the command
-                            myCommand.Parameters.AddWithValue("@startDate", startDate);
-                            myCommand.Parameters.AddWithValue("@endDate", endDate);
-                            myCommand.Parameters.AddWithValue("@location", location);
-
-                            using (SqlDataReader myReader = myCommand.ExecuteReader())
+                            // Create a SecurityReport object and populate its properties
+                            SecurityReport securityReport = new SecurityReport
                             {
-                                while (myReader.Read())
-                                {
-                                    // Create a SecurityReport object and populate its properties
-                                    SecurityReport securityReport = new SecurityReport
-                                    {
-                                        empID = Convert.ToInt32(myReader["emp_id"]),
-                                        date = Convert.ToDateTime(myReader["log_date"]),
-                                        time = myReader.GetTimeSpan(myReader.GetOrdinal("log_time")),
-                                        eventDescription = myReader["event_description"].ToString(),
-                                        location = myReader["event_location"].ToString(),
-                                        severityLevel = myReader["severity_level"].ToString(),
-                                        logID = Convert.ToInt32(myReader["log_id"])
-                                    };
+                                empID = Convert.ToInt32(myReader["emp_id"]),
+                                date = Convert.ToDateTime(myReader["log_date"]),
+                                time = myReader.GetTimeSpan(myReader.GetOrdinal("log_time")),
+                                eventDescription = myReader["event_description"].ToString(),
+                                location = myReader["event_location"].ToString(),
+                                severityLevel = myReader["severity_level"].ToString(),
+                                logID = Convert.ToInt32(myReader["log_id"])
+                            };
 
-                                    // Add the object to the list
-                                    securityReports.Add(securityReport);
-                                }
-                            }
+                            // Add the object to the list
+                            securityReports.Add(securityReport);
                         }
-                        myCon.Close();
                     }
-
-                    // Return the list of SecurityReport objects as a JSON response
-                    return new JsonResult(securityReports);
                 }
+                myCon.Close();
+            }
+
+            // Return the list of SecurityReport objects as a JSON response
+            return new JsonResult(securityReports);
+        }
 
 
 
