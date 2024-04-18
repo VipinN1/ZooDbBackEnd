@@ -178,65 +178,81 @@ namespace BackEnd.Controllers
 
 
 
-        [HttpPost]
-        [Route("NewVetRecords")]
-        public JsonResult NewVetRecords([FromBody] VetRecords newVetRecords)
+        public class ModifyVetRequest
         {
-            // Prepare the SQL query for inserting a new user
-            string checkAnimalExistsQuery1 = "SELECT animal_id from animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
-            string insertVetQuery = "INSERT INTO vet_records (animal_id,weight,height,diagnosis,medications) VALUES (@animalID, @weight, @height, @diagnosis, @medications)";
-            string updateVetQuery = "UPDATE vet_records SET weight = @weight, height = @height, diagnosis = @diagnosis, medications = @medications WHERE animal_id = @animalID";
+            public VetRecords OriginalVetRecord { get; set; }
+            public VetRecords UpdatedVetRecord { get; set; }
+        }
 
+        [HttpPut]
+        [Route("Vet/Modify")]
+        public JsonResult ModifyVetRecords([FromBody] ModifyVetRequest request)
+        {
+            VetRecords originalVetRecord = request.OriginalVetRecord;
+            VetRecords updatedVetRecord = request.UpdatedVetRecord;
+
+            // Prepare the SQL query to update vet records
+            string query = @"
+    UPDATE vet_records
+    SET
+        weight = @newWeight,
+        height = @newHeight,
+        diagnosis = @newDiagnosis,
+        medications = @newMedications
+    WHERE animal_id = (
+        SELECT animal_id 
+        FROM animal 
+        WHERE animal_name = @originalAnimalName 
+            AND animal_species = @originalAnimalSpecies 
+            AND animal_DoB = @originalAnimalDoB
+    )";
 
             // Get the connection string from appsettings.json
             string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
 
-
-            bool vetExists = false;
-
-
-            // Open a connection to the database and execute the query
-            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            try
             {
-
-                myCon.Open();
-                int animalId = 0;
-                using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery1, myCon))
+                // Open a connection to the database and execute the query
+                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
                 {
-                    // Add parameters to the command to prevent SQL injection
-                    checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newVetRecords.animalSpecies);
-                    checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newVetRecords.animalDoB);
+                    myCon.Open();
 
-                    object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
-                    if (result != null)
-                        animalId = Convert.ToInt32(result);
-                    else
-                        return new JsonResult("No such animal found");
-                }
+                    using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                    {
+                        // Parameters for the new (updated) data
+                        myCommand.Parameters.AddWithValue("@newWeight", updatedVetRecord.weight);
+                        myCommand.Parameters.AddWithValue("@newHeight", updatedVetRecord.height);
+                        myCommand.Parameters.AddWithValue("@newDiagnosis", updatedVetRecord.diagnosis);
+                        myCommand.Parameters.AddWithValue("@newMedications", updatedVetRecord.medications);
 
+                        // Parameters for matching the original data (to find the correct animal_id)
+                        myCommand.Parameters.AddWithValue("@originalAnimalName", originalVetRecord.animalName);
+                        myCommand.Parameters.AddWithValue("@originalAnimalSpecies", originalVetRecord.animalSpecies);
+                        myCommand.Parameters.AddWithValue("@originalAnimalDoB", originalVetRecord.animalDoB);
 
-                // Check if vet entry exists for this animal_id
-                using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
-                {
-                    checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
-                    vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
-                }
+                        // Execute the update query
+                        int rowsAffected = myCommand.ExecuteNonQuery();
 
-                // Insert or update vet information
-                using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
-                {
-                    vetCmd.Parameters.AddWithValue("@animalID", animalId);
-                    vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
-                    vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
-                    vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
-                    vetCmd.Parameters.AddWithValue("@diagnosis", newVetRecords.diagnosis);
-
-                    vetCmd.ExecuteNonQuery();  // Execute either update or insert
+                        if (rowsAffected > 0)
+                        {
+                            return new JsonResult(new { message = "Vet records updated successfully." });
+                        }
+                        else
+                        {
+                            // If no rows were affected, the vet records were not found
+                            return new JsonResult(new { message = "Vet records not found.", status = 404 });
+                        }
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                // Log the exception if needed
+                Console.Error.WriteLine(ex);
 
-            // Return a response indicating success
-            return new JsonResult(vetExists ? "Vet updated successfully" : "New vet added successfully");
+                // Return an error response
+                return new JsonResult(new { message = "An error occurred while updating vet records.", status = 500 });
+            }
         }
 
 
@@ -556,67 +572,6 @@ namespace BackEnd.Controllers
                     // Return a response indicating success
                     return new JsonResult("New ticket purchase added successfully");
                 }
-
-        public class EnclosureTypeRequest
-                {
-                    public string EnclosureType { get; set; }
-                }
-
-            [HttpPost]
-            [Route("GenerateEnclosureReport")]
-            public JsonResult GenerateEnclosureReport([FromBody] EnclosureTypeRequest request)
-            {
-                // Access request.EnclosureType instead of data.enclosureType
-                string enclosureType = request.EnclosureType;
-
-                // Define the query to fetch enclosure data based on the given enclosure type
-                string query = "SELECT * FROM enclosure WHERE enclosure_type = @enclosureType";
-
-                // Create a list to hold the results
-                List<Enclosure> enclosures = new List<Enclosure>();
-
-                // Get the connection string from appsettings.json
-                string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                // Open a connection to the database and execute the query
-                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-                {
-                    myCon.Open();
-
-                    // Use a SqlCommand to execute the query with parameterization
-                    using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                    {
-                        // Add the enclosure type parameter to the command
-                        myCommand.Parameters.AddWithValue("@enclosureType", enclosureType);
-
-                        // Execute the query and load the results into a SqlDataReader
-                        using (SqlDataReader myReader = myCommand.ExecuteReader())
-                        {
-                            while (myReader.Read())
-                            {
-                                // Create a new Enclosure object and populate its properties
-                                Enclosure enclosure = new Enclosure
-                                {
-                                    enclosureID = Convert.ToInt32(myReader["enclosure_id"]),
-                                    enclosureName = myReader["enclosure_name"].ToString(),
-                                    cleaningScheduleStart = myReader.GetTimeSpan(myReader.GetOrdinal("cleaning_schedule_start")),
-                                    cleaningScheduleEnd = myReader.GetTimeSpan(myReader.GetOrdinal("cleaning_schedule_end"))
-                                };
-
-                                // Add the Enclosure object to the list
-                                enclosures.Add(enclosure);
-                            }
-                        }
-                    }
-
-                    // Close the connection
-                    myCon.Close();
-                }
-
-                // Return the list of Enclosure objects as a JSON response
-                return new JsonResult(enclosures);
-            }
-
 
 
             [HttpPost]
@@ -1502,6 +1457,93 @@ namespace BackEnd.Controllers
         }
 
 
+        [HttpGet]
+        [Route("GetAllEnclosures")]
+        public JsonResult GetAllEnclosures()
+        {
+            // SQL query to retrieve all enclosures
+            string query = "SELECT * FROM enclosure";
+
+            // Create a DataTable to store the results
+            DataTable table = new DataTable();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                {
+                    // Execute the query and load the results into the DataTable
+                    SqlDataReader myReader = myCommand.ExecuteReader();
+                    table.Load(myReader);
+
+                    // Close the reader and connection
+                    myReader.Close();
+                    myCon.Close();
+                }
+            }
+
+            // Return the DataTable as a JSON response
+            return new JsonResult(table);
+        }
+
+            [HttpPut]
+            [Route("Animal/Transfer")]
+            public IActionResult TransferAnimalToEnclosure([FromBody] TransferRequest request)
+            {
+                // Prepare the SQL query for updating the animal's enclosure_id
+                string query = "UPDATE animal SET enclosure_id = @NewEnclosureID WHERE animal_id = @AnimalID";
+
+                // Get the connection string from appsettings.json
+                string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+                try
+                {
+                    // Open a connection to the database and execute the query
+                    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                    {
+                        myCon.Open();
+                        using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                        {
+                            // Add parameters to the command to prevent SQL injection
+                            myCommand.Parameters.AddWithValue("@NewEnclosureID", request.EnclosureID);
+                            myCommand.Parameters.AddWithValue("@AnimalID", request.AnimalID);
+
+                            // Execute the query (UPDATE operation)
+                            int rowsAffected = myCommand.ExecuteNonQuery();
+
+                            // Check if the update was successful (at least one row affected)
+                            if (rowsAffected > 0)
+                            {
+                                // Return a success response
+                                return Ok("Animal transferred successfully.");
+                            }
+                            else
+                            {
+                                // Return a not found response if no rows were affected
+                                return NotFound("Animal not found.");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log the error and return a meaningful error message
+                    // You may use your logging library here
+                    Console.WriteLine($"Error: {ex.Message}");
+                    return StatusCode(500, "An error occurred while transferring the animal.");
+                }
+            }
+
+            // Define a model to receive the transfer request
+            public class TransferRequest
+            {
+                public int AnimalID { get; set; }
+                public int EnclosureID { get; set; }
+            }
 
     }
 
