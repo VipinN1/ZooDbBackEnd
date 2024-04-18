@@ -183,18 +183,18 @@ namespace BackEnd.Controllers
         public JsonResult NewVetRecords([FromBody] VetRecords newVetRecords)
         {
             // Prepare the SQL query for inserting a new user
-            string checkAnimalExistsQuery1 = "SELECT animal_id FROM animal WHERE animal_name = @animalName AND animal_species = @animalSpecies AND animal_DoB = @animalDoB";
+            string checkAnimalExistsQuery1 = "SELECT animal_id from animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
             string insertVetQuery = "INSERT INTO vet_records (animal_id,weight,height,diagnosis,medications) VALUES (@animalID, @weight, @height, @diagnosis, @medications)";
             string updateVetQuery = "UPDATE vet_records SET weight = @weight, height = @height, diagnosis = @diagnosis, medications = @medications WHERE animal_id = @animalID";
 
 
             // Get the connection string from appsettings.json
             string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-            
+
 
             bool vetExists = false;
 
-            
+
             // Open a connection to the database and execute the query
             using (SqlConnection myCon = new SqlConnection(sqlDataSource))
             {
@@ -204,41 +204,41 @@ namespace BackEnd.Controllers
                 using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery1, myCon))
                 {
                     // Add parameters to the command to prevent SQL injection
-                    checkAnimalCmd.Parameters.AddWithValue("@animalName", newVetRecords.animalName);
                     checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newVetRecords.animalSpecies);
                     checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newVetRecords.animalDoB);
 
-                        object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
-                        if (result != null)
-                            animalId = Convert.ToInt32(result);
-                        else
-                            return new JsonResult("No such animal found");
+                    object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
+                    if (result != null)
+                        animalId = Convert.ToInt32(result);
+                    else
+                        return new JsonResult("No such animal found");
                 }
 
-                
-                    // Check if vet entry exists for this animal_id
-                    using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
-                    {
-                        checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
-                        vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
-                    }
 
-                    // Insert or update vet information
-                    using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
-                    {
-                        vetCmd.Parameters.AddWithValue("@animalID", animalId);
-                        vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
-                        vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
-                        vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
-                        vetCmd.Parameters.AddWithValue("@diagnosis",newVetRecords.diagnosis);
+                // Check if vet entry exists for this animal_id
+                using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
+                {
+                    checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
+                    vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
+                }
 
-                        vetCmd.ExecuteNonQuery();  // Execute either update or insert
-                    }
+                // Insert or update vet information
+                using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
+                {
+                    vetCmd.Parameters.AddWithValue("@animalID", animalId);
+                    vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
+                    vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
+                    vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
+                    vetCmd.Parameters.AddWithValue("@diagnosis", newVetRecords.diagnosis);
+
+                    vetCmd.ExecuteNonQuery();  // Execute either update or insert
+                }
             }
 
             // Return a response indicating success
             return new JsonResult(vetExists ? "Vet updated successfully" : "New vet added successfully");
         }
+
 
 
         [HttpPost]
@@ -556,130 +556,6 @@ namespace BackEnd.Controllers
                     // Return a response indicating success
                     return new JsonResult("New ticket purchase added successfully");
                 }
-
-
-                [HttpPost]
-                [Route("DietReport")]
-                public JsonResult DietReport([FromBody] dynamic data)
-                        {
-                            // Retrieve the animal_id from the request
-                            int animalID = data.animalID;
-
-                            // Get the connection string from appsettings.json
-                            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                            // Define the query to fetch diet information
-                            string query = @"
-                                SELECT
-                                    diet_name AS DietName,
-                                    diet_type AS DietType,
-                                    diet_schedule AS DietSchedule
-                                FROM
-                                    diet
-                                WHERE
-                                    animal_id = @animalID
-                            ";
-
-                        // Initialize the diet information object
-                        dynamic dietInfo = null;
-
-                        // Open a connection to the database
-                        using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-                        {
-                            myCon.Open();
-
-                            // Use a SqlCommand to execute the query
-                            using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                            {
-                                // Add parameters to the SqlCommand object
-                                myCommand.Parameters.AddWithValue("@animalID", animalID);
-
-                                // Execute the query and load the result into a SqlDataReader
-                                using (SqlDataReader myReader = myCommand.ExecuteReader())
-                                {
-                                    if (myReader.Read())
-                                    {
-                                        // Create an object to store the diet information
-                                        dietInfo = new
-                                        {
-                                            DietName = myReader["DietName"].ToString(),
-                                            DietType = myReader["DietType"].ToString(),
-                                            DietSchedule = myReader["DietSchedule"].ToString(),
-                                        };
-                                    }
-                                }
-                            }
-                        }
-
-                    // Return the diet information as a JSON response
-                    return new JsonResult(dietInfo);
-                }
-
-
-
-        [HttpPost]
-        [Route("VetRecordsReport")]
-        public JsonResult VetRecordsReport([FromBody] dynamic data)
-        {
-            // Retrieve the animal_id from the request
-            int animalID = data.animalID;
-
-            // Get the connection string from appsettings.json
-            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-            // Define the query to fetch vet records information
-            string query = @"
-        SELECT
-            weight AS Weight,
-            height AS Height,
-            diagnosis AS Diagnosis,
-            medications AS Medications
-        FROM
-            vet_records
-        WHERE
-            animal_id = @animalID
-    ";
-
-            // Initialize the vet records information object
-            dynamic vetRecordsInfo = null;
-
-            // Open a connection to the database
-            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-            {
-                myCon.Open();
-
-                // Use a SqlCommand to execute the query
-                using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                {
-                    // Add parameters to the SqlCommand object
-                    myCommand.Parameters.AddWithValue("@animalID", animalID);
-
-                    // Execute the query and load the result into a SqlDataReader
-                    using (SqlDataReader myReader = myCommand.ExecuteReader())
-                    {
-                        if (myReader.Read())
-                        {
-                            // Create an object to store the vet records information
-                            vetRecordsInfo = new
-                            {
-                                Weight = myReader["Weight"] == DBNull.Value ? (float?)null : Convert.ToSingle(myReader["Weight"]),
-                                Height = myReader["Height"] == DBNull.Value ? (float?)null : Convert.ToSingle(myReader["Height"]),
-                                Diagnosis = myReader["Diagnosis"]?.ToString(),
-                                Medications = myReader["Medications"]?.ToString(),
-                            };
-                        }
-                    }
-                }
-            }
-
-            // Return the vet records information as a JSON response
-            return new JsonResult(vetRecordsInfo);
-        }
-
-
-
-
-
 
         public class EnclosureTypeRequest
                 {
@@ -1463,6 +1339,169 @@ namespace BackEnd.Controllers
             // Return a response indicating success
             return new JsonResult("Enclosure deleted successfully");
         }
+
+
+        [HttpGet]
+        [Route("GetDiet")]
+        public IActionResult GetDiet(string animalName, string animalSpecies, DateTime animalDoB)
+        {
+            // Prepare the SQL query to check for the existence of the animal
+            string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_name = @animalName AND animal_species = @animalSpecies AND animal_DoB = @animalDoB";
+
+            // Prepare the SQL query to retrieve diet information
+            string retrieveDietQuery = "SELECT diet_name, diet_type, diet_schedule FROM diet WHERE animal_id = @animalID";
+
+            // Get the database connection string
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            try
+            {
+                // Open a connection to the database
+                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                {
+                    myCon.Open();
+
+                    // Check if the animal exists and retrieve animal_id
+                    int animalId = 0;
+                    using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery, myCon))
+                    {
+                        // Add parameters to the command
+                        checkAnimalCmd.Parameters.AddWithValue("@animalName", animalName);
+                        checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", animalSpecies);
+                        checkAnimalCmd.Parameters.AddWithValue("@animalDoB", animalDoB);
+
+                        // Execute the command and retrieve the animal ID
+                        object result = checkAnimalCmd.ExecuteScalar();
+                        if (result != null)
+                        {
+                            animalId = Convert.ToInt32(result);
+                        }
+                        else
+                        {
+                            // Return a not found response if the animal does not exist
+                            return NotFound("No such animal found");
+                        }
+                    }
+
+                    // Retrieve diet information for the animal
+                    var dietData = new List<Dictionary<string, object>>();
+                    using (SqlCommand retrieveDietCmd = new SqlCommand(retrieveDietQuery, myCon))
+                    {
+                        // Add parameters to the command
+                        retrieveDietCmd.Parameters.AddWithValue("@animalID", animalId);
+
+                        // Execute the command and read the data
+                        using (SqlDataReader dietReader = retrieveDietCmd.ExecuteReader())
+                        {
+                            while (dietReader.Read())
+                            {
+                                var dietRecord = new Dictionary<string, object>
+                        {
+                            { "dietName", dietReader["diet_name"] },
+                            { "dietType", dietReader["diet_type"] },
+                            { "dietSchedule", dietReader["diet_schedule"] }
+                        };
+
+                                dietData.Add(dietRecord);
+                            }
+                        }
+                    }
+
+                    // Return the diet data as a JSON response
+                    return Ok(dietData);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error and return a meaningful error message
+                // You can use your preferred logging library here
+                Console.WriteLine($"Error: {ex.Message}");
+                return StatusCode(500, "An error occurred while retrieving diet information.");
+            }
+        }
+
+
+        [HttpGet]
+        [Route("GetVetRecords")]
+        public IActionResult GetVetRecords(string animalName, string animalSpecies, DateTime animalDoB)
+        {
+            // Prepare the SQL query to check for the existence of the animal
+            string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_name = @animalName AND animal_species = @animalSpecies AND animal_DoB = @animalDoB";
+
+            // Prepare the SQL query to retrieve vet records
+            string retrieveVetQuery = "SELECT weight, height, diagnosis, medications FROM vet_records WHERE animal_id = @animalID";
+
+            // Get the database connection string
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            try
+            {
+                // Open a connection to the database
+                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                {
+                    myCon.Open();
+
+                    // Check if the animal exists and retrieve animal_id
+                    int animalId = 0;
+                    using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery, myCon))
+                    {
+                        // Add parameters to the command
+                        checkAnimalCmd.Parameters.AddWithValue("@animalName", animalName);
+                        checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", animalSpecies);
+                        checkAnimalCmd.Parameters.AddWithValue("@animalDoB", animalDoB);
+
+                        // Execute the command and retrieve the animal ID
+                        object result = checkAnimalCmd.ExecuteScalar();
+                        if (result != null)
+                        {
+                            animalId = Convert.ToInt32(result);
+                        }
+                        else
+                        {
+                            // Return a not found response if the animal does not exist
+                            return NotFound("No such animal found");
+                        }
+                    }
+
+                    // Retrieve vet records for the animal
+                    var vetData = new List<Dictionary<string, object>>();
+                    using (SqlCommand retrieveVetCmd = new SqlCommand(retrieveVetQuery, myCon))
+                    {
+                        // Add parameters to the command
+                        retrieveVetCmd.Parameters.AddWithValue("@animalID", animalId);
+
+                        // Execute the command and read the data
+                        using (SqlDataReader vetReader = retrieveVetCmd.ExecuteReader())
+                        {
+                            while (vetReader.Read())
+                            {
+                                var vetRecord = new Dictionary<string, object>
+                        {
+                            { "weight", vetReader["weight"] },
+                            { "height", vetReader["height"] },
+                            { "diagnosis", vetReader["diagnosis"] },
+                            { "medications", vetReader["medications"] }
+                        };
+
+                                vetData.Add(vetRecord);
+                            }
+                        }
+                    }
+
+                    // Return the vet data as a JSON response
+                    return Ok(vetData);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error and return a meaningful error message
+                // You can use your preferred logging library here
+                Console.WriteLine($"Error: {ex.Message}");
+                return StatusCode(500, "An error occurred while retrieving vet information.");
+            }
+        }
+
+
 
     }
 
