@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using BackEnd.Models;
 using System;
 using System.Dynamic;
+using System.Text;
 
 
 
@@ -1544,6 +1545,233 @@ namespace BackEnd.Controllers
                 public int AnimalID { get; set; }
                 public int EnclosureID { get; set; }
             }
+
+        [HttpPost]
+        [Route("GenerateEnclosureReport")]
+        public JsonResult GenerateEnclosureReport([FromBody] EnclosureReportRequest request)
+        {
+            // Access filter parameters from the request
+            string enclosureName = request.EnclosureName;
+            string enclosureType = request.EnclosureType;
+            DateTime? dateRangeStart = request.DateRangeStart;
+            DateTime? dateRangeEnd = request.DateRangeEnd;
+            TimeSpan? timeRangeStart = request.TimeRangeStart;
+            TimeSpan? timeRangeEnd = request.TimeRangeEnd;
+
+            // Prepare the query with filtering conditions
+            StringBuilder queryBuilder = new StringBuilder("SELECT enclosure_id, enclosure_name, enclosure_type, built_date, cleaning_schedule_start, cleaning_schedule_end FROM enclosure WHERE 1=1");
+
+            // Add filtering conditions based on the provided parameters
+            if (!string.IsNullOrEmpty(enclosureName))
+            {
+                queryBuilder.Append(" AND enclosure_name LIKE @enclosureName");
+            }
+
+            if (!string.IsNullOrEmpty(enclosureType))
+            {
+                queryBuilder.Append(" AND enclosure_type = @enclosureType");
+            }
+
+            if (dateRangeStart.HasValue)
+            {
+                queryBuilder.Append(" AND built_date >= @dateRangeStart");
+            }
+
+            if (dateRangeEnd.HasValue)
+            {
+                queryBuilder.Append(" AND built_date <= @dateRangeEnd");
+            }
+
+            if (timeRangeStart.HasValue)
+            {
+                queryBuilder.Append(" AND cleaning_schedule_start >= @timeRangeStart");
+            }
+
+            if (timeRangeEnd.HasValue)
+            {
+                queryBuilder.Append(" AND cleaning_schedule_end <= @timeRangeEnd");
+            }
+
+            string query = queryBuilder.ToString();
+
+            // Create a list to hold the results
+            List<Enclosure> enclosures = new List<Enclosure>();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+
+                // Use a SqlCommand to execute the query with parameterization
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                {
+                    // Add parameters to the command to prevent SQL injection
+                    if (!string.IsNullOrEmpty(enclosureName))
+                    {
+                        myCommand.Parameters.AddWithValue("@enclosureName", $"%{enclosureName}%");
+                    }
+
+                    if (!string.IsNullOrEmpty(enclosureType))
+                    {
+                        myCommand.Parameters.AddWithValue("@enclosureType", enclosureType);
+                    }
+
+                    if (dateRangeStart.HasValue)
+                    {
+                        myCommand.Parameters.AddWithValue("@dateRangeStart", dateRangeStart.Value);
+                    }
+
+                    if (dateRangeEnd.HasValue)
+                    {
+                        myCommand.Parameters.AddWithValue("@dateRangeEnd", dateRangeEnd.Value);
+                    }
+
+                    if (timeRangeStart.HasValue)
+                    {
+                        myCommand.Parameters.AddWithValue("@timeRangeStart", timeRangeStart.Value);
+                    }
+
+                    if (timeRangeEnd.HasValue)
+                    {
+                        myCommand.Parameters.AddWithValue("@timeRangeEnd", timeRangeEnd.Value);
+                    }
+
+                    // Execute the query and load the results into a SqlDataReader
+                    using (SqlDataReader myReader = myCommand.ExecuteReader())
+                    {
+                        while (myReader.Read())
+                        {
+                            // Create a new Enclosure object and populate its properties
+                            Enclosure enclosure = new Enclosure
+                            {
+                                enclosureID = Convert.ToInt32(myReader["enclosure_id"]),
+                                enclosureName = myReader["enclosure_name"].ToString(),
+                                enclosureType = myReader["enclosure_type"].ToString(),
+                                builtDate = Convert.ToDateTime(myReader["built_date"]),
+                                cleaningScheduleStart = (TimeSpan)myReader["cleaning_schedule_start"],
+                                cleaningScheduleEnd = (TimeSpan)myReader["cleaning_schedule_end"]
+                            };
+
+                            // Add the Enclosure object to the list
+                            enclosures.Add(enclosure);
+                        }
+                    }
+                }
+            }
+
+            // Return the list of Enclosure objects as a JSON response
+            return new JsonResult(enclosures);
+        }
+
+
+        [HttpGet]
+        [Route("FetchAnimalsForEnclosure/{enclosureID}")]
+        public JsonResult FetchAnimalsForEnclosure(int enclosureID)
+        {
+            // Create a list to hold the results
+            List<Animal> animals = new List<Animal>();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Define the query to fetch animals from the specified enclosure
+            string query = "SELECT * FROM animal WHERE enclosure_id = @enclosureID";
+
+            // Open a connection to the database
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+
+                // Use a SqlCommand to execute the query with parameterization
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                {
+                    // Add parameters to the command to prevent SQL injection
+                    myCommand.Parameters.AddWithValue("@enclosureID", enclosureID);
+
+                    // Execute the query and load the results into a SqlDataReader
+                    using (SqlDataReader myReader = myCommand.ExecuteReader())
+                    {
+                        while (myReader.Read())
+                        {
+                            // Create a new Animal object and populate its properties
+                            Animal animal = new Animal
+                            {
+                                animalID = Convert.ToInt32(myReader["animal_id"]),
+                                enclosureID = Convert.ToInt32(myReader["enclosure_id"]),
+                                animalName = myReader["animal_name"].ToString(),
+                                animalSpecies = myReader["animal_species"].ToString(),
+                                animalGender = Convert.ToChar(myReader["animal_gender"]),
+                                animalDoB = Convert.ToDateTime(myReader["animal_dob"]),
+                                animalEndangered = Convert.ToBoolean(myReader["animal_endangered"]),
+                                animalDoA = Convert.ToDateTime(myReader["animal_doa"]),
+                                animalOrigin = myReader["animal_origin"].ToString()
+                            };
+
+                            // Add the Animal object to the list
+                            animals.Add(animal);
+                        }
+                    }
+                }
+            }
+
+            // Return the list of Animal objects
+            return new JsonResult(animals);
+        }
+
+        [HttpGet]
+        [Route("GetUniqueEnclosureTypes")]
+        public IActionResult GetUniqueEnclosureTypes()
+        {
+            // Define a list to store the unique enclosure types
+            List<string> uniqueEnclosureTypes = new List<string>();
+
+            // Retrieve the connection string from configuration
+            string connectionString = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Define the SQL query to fetch unique enclosure types from the enclosure table
+            string query = "SELECT DISTINCT enclosure_type FROM enclosure";
+
+            // Create a SqlConnection using the connection string
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                // Create a SqlCommand to execute the query
+                SqlCommand command = new SqlCommand(query, connection);
+
+                try
+                {
+                    // Open the connection
+                    connection.Open();
+
+                    // Execute the query and retrieve the results using a SqlDataReader
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        // Iterate through the results and add each unique enclosure type to the list
+                        while (reader.Read())
+                        {
+                            string enclosureType = reader["enclosure_type"].ToString();
+                            uniqueEnclosureTypes.Add(enclosureType);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log the detailed exception
+                    Console.Error.WriteLine($"Error while retrieving unique enclosure types: {ex.Message}");
+                    return StatusCode(500, "An error occurred while retrieving unique enclosure types.");
+                }
+            }
+
+            // Return the list of unique enclosure types as a JSON response
+            return Ok(uniqueEnclosureTypes);
+        }
+
+
+
+
+
 
     }
 

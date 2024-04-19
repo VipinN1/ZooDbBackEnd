@@ -8,5 +8,6 @@ namespace BackEnd.Models
         public DateTime builtDate { get; set; }
         public TimeSpan cleaningScheduleStart { get; set; }
         public TimeSpan cleaningScheduleEnd { get; set; }
+        public List<Animal> Animals { get; set; } = new List<Animal>();
     }
 }
