@@ -116,145 +116,129 @@ namespace BackEnd.Controllers
 
 
 
-            [HttpPost]
-            [Route("NewDiet")]
-            public JsonResult NewDiet([FromBody] Diet newDiet)
-            {
-                // Prepare SQL queries
-                string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_name = @animalName AND animal_species = @animalSpecies AND animal_DoB = @animalDoB";
-                string insertDietQuery = "INSERT INTO diet (animal_id, diet_name, diet_type, diet_schedule) VALUES (@animalID, @dietName, @dietType, @dietSchedule)";
-                string updateDietQuery = "UPDATE diet SET diet_name = @dietName, diet_type = @dietType, diet_schedule = @dietSchedule WHERE animal_id = @animalID";
-
-                // Get the connection string from appsettings.json
-                string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-                // Define dietExists outside of the using block so it's accessible later
-                bool dietExists = false;
-
-                // Open a connection to the database
-                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-                {
-                    myCon.Open();
-
-                    // Check if animal exists and get animal_id
-                    int animalId = 0;
-                    using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery, myCon))
-                    {
-                        checkAnimalCmd.Parameters.AddWithValue("@animalName", newDiet.animalName);
-                        checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newDiet.animalSpecies);
-                        checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newDiet.animalDoB);
-
-                        object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
-                        if (result != null)
-                            animalId = Convert.ToInt32(result);
-                        else
-                            return new JsonResult("No such animal found");
-                    }
-
-                    // Check if diet entry exists for this animal_id
-                    using (SqlCommand checkDietCmd = new SqlCommand("SELECT COUNT(1) FROM diet WHERE animal_id = @animalID", myCon))
-                    {
-                        checkDietCmd.Parameters.AddWithValue("@animalID", animalId);
-                        dietExists = (int)checkDietCmd.ExecuteScalar() > 0;
-                    }
-
-                    // Insert or update diet information
-                    using (SqlCommand dietCmd = new SqlCommand(dietExists ? updateDietQuery : insertDietQuery, myCon))
-                    {
-                        dietCmd.Parameters.AddWithValue("@animalID", animalId);
-                        dietCmd.Parameters.AddWithValue("@dietName", newDiet.dietName);
-                        dietCmd.Parameters.AddWithValue("@dietType", newDiet.dietType);
-                        dietCmd.Parameters.AddWithValue("@dietSchedule", newDiet.dietSchedule);
-
-                        dietCmd.ExecuteNonQuery();  // Execute either update or insert
-                    }
-                }
-
-                // Return a response indicating success
-                return new JsonResult(dietExists ? "Diet updated successfully" : "New diet added successfully");
-            }
-
-
-
-
-
-
-        public class ModifyVetRequest
+        [HttpPost]
+        [Route("NewDiet")]
+        public JsonResult NewDiet([FromBody] Diet newDiet)
         {
-            public VetRecords OriginalVetRecord { get; set; }
-            public VetRecords UpdatedVetRecord { get; set; }
-        }
-
-        [HttpPut]
-        [Route("Vet/Modify")]
-        public JsonResult ModifyVetRecords([FromBody] ModifyVetRequest request)
-        {
-            VetRecords originalVetRecord = request.OriginalVetRecord;
-            VetRecords updatedVetRecord = request.UpdatedVetRecord;
-
-            // Prepare the SQL query to update vet records
-            string query = @"
-    UPDATE vet_records
-    SET
-        weight = @newWeight,
-        height = @newHeight,
-        diagnosis = @newDiagnosis,
-        medications = @newMedications
-    WHERE animal_id = (
-        SELECT animal_id 
-        FROM animal 
-        WHERE animal_name = @originalAnimalName 
-            AND animal_species = @originalAnimalSpecies 
-            AND animal_DoB = @originalAnimalDoB
-    )";
+            // Prepare SQL queries
+            string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
+            string insertDietQuery = "INSERT INTO diet (animal_id, diet_name, diet_type, diet_schedule) VALUES (@animalID, @dietName, @dietType, @dietSchedule)";
+            string updateDietQuery = "UPDATE diet SET diet_name = @dietName, diet_type = @dietType, diet_schedule = @dietSchedule WHERE animal_id = @animalID";
 
             // Get the connection string from appsettings.json
             string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
 
-            try
+            // Define dietExists outside of the using block so it's accessible later
+            bool dietExists = false;
+
+            // Open a connection to the database
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
             {
-                // Open a connection to the database and execute the query
-                using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+                myCon.Open();
+
+                // Check if animal exists and get animal_id
+                int animalId = 0;
+                using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery, myCon))
                 {
-                    myCon.Open();
+                    checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newDiet.animalSpecies);
+                    checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newDiet.animalDoB);
 
-                    using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                    {
-                        // Parameters for the new (updated) data
-                        myCommand.Parameters.AddWithValue("@newWeight", updatedVetRecord.weight);
-                        myCommand.Parameters.AddWithValue("@newHeight", updatedVetRecord.height);
-                        myCommand.Parameters.AddWithValue("@newDiagnosis", updatedVetRecord.diagnosis);
-                        myCommand.Parameters.AddWithValue("@newMedications", updatedVetRecord.medications);
+                    object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
+                    if (result != null)
+                        animalId = Convert.ToInt32(result);
+                    else
+                        return new JsonResult("No such animal found");
+                }
 
-                        // Parameters for matching the original data (to find the correct animal_id)
-                        myCommand.Parameters.AddWithValue("@originalAnimalName", originalVetRecord.animalName);
-                        myCommand.Parameters.AddWithValue("@originalAnimalSpecies", originalVetRecord.animalSpecies);
-                        myCommand.Parameters.AddWithValue("@originalAnimalDoB", originalVetRecord.animalDoB);
+                // Check if diet entry exists for this animal_id
+                using (SqlCommand checkDietCmd = new SqlCommand("SELECT COUNT(1) FROM diet WHERE animal_id = @animalID", myCon))
+                {
+                    checkDietCmd.Parameters.AddWithValue("@animalID", animalId);
+                    dietExists = (int)checkDietCmd.ExecuteScalar() > 0;
+                }
 
-                        // Execute the update query
-                        int rowsAffected = myCommand.ExecuteNonQuery();
+                // Insert or update diet information
+                using (SqlCommand dietCmd = new SqlCommand(dietExists ? updateDietQuery : insertDietQuery, myCon))
+                {
+                    dietCmd.Parameters.AddWithValue("@animalID", animalId);
+                    dietCmd.Parameters.AddWithValue("@dietName", newDiet.dietName);
+                    dietCmd.Parameters.AddWithValue("@dietType", newDiet.dietType);
+                    dietCmd.Parameters.AddWithValue("@dietSchedule", newDiet.dietSchedule);
 
-                        if (rowsAffected > 0)
-                        {
-                            return new JsonResult(new { message = "Vet records updated successfully." });
-                        }
-                        else
-                        {
-                            // If no rows were affected, the vet records were not found
-                            return new JsonResult(new { message = "Vet records not found.", status = 404 });
-                        }
-                    }
+                    dietCmd.ExecuteNonQuery();  // Execute either update or insert
                 }
             }
-            catch (Exception ex)
-            {
-                // Log the exception if needed
-                Console.Error.WriteLine(ex);
 
-                // Return an error response
-                return new JsonResult(new { message = "An error occurred while updating vet records.", status = 500 });
-            }
+            // Return a response indicating success
+            return new JsonResult(dietExists ? "Diet updated successfully" : "New diet added successfully");
         }
+
+
+
+
+
+
+        [HttpPost]
+        [Route("NewVetRecords")]
+        public JsonResult NewVetRecords([FromBody] VetRecords newVetRecords)
+        {
+            // Prepare the SQL query for inserting a new user
+            string checkAnimalExistsQuery1 = "SELECT animal_id from animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
+            string insertVetQuery = "INSERT INTO vet_records (animal_id,weight,height,diagnosis,medications) VALUES (@animalID, @weight, @height, @diagnosis, @medications)";
+            string updateVetQuery = "UPDATE vet_records SET weight = @weight, height = @height, diagnosis = @diagnosis, medications = @medications WHERE animal_id = @animalID";
+
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+
+            bool vetExists = false;
+
+
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+
+                myCon.Open();
+                int animalId = 0;
+                using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery1, myCon))
+                {
+                    // Add parameters to the command to prevent SQL injection
+                    checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newVetRecords.animalSpecies);
+                    checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newVetRecords.animalDoB);
+
+                    object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
+                    if (result != null)
+                        animalId = Convert.ToInt32(result);
+                    else
+                        return new JsonResult("No such animal found");
+                }
+
+
+                // Check if vet entry exists for this animal_id
+                using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
+                {
+                    checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
+                    vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
+                }
+
+                // Insert or update vet information
+                using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
+                {
+                    vetCmd.Parameters.AddWithValue("@animalID", animalId);
+                    vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
+                    vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
+                    vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
+                    vetCmd.Parameters.AddWithValue("@diagnosis", newVetRecords.diagnosis);
+
+                    vetCmd.ExecuteNonQuery();  // Execute either update or insert
+                }
+            }
+
+            // Return a response indicating success
+            return new JsonResult(vetExists ? "Vet updated successfully" : "New vet added successfully");
+        }
+
 
 
 
