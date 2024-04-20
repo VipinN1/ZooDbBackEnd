@@ -78,39 +78,39 @@ namespace BackEnd.Controllers
         }
 
         [HttpPost]
-        [Route("NewUserProfile")]
-        public JsonResult NewUserProfile([FromBody] UserProfile userProfile)
-        {
-            // Prepare the SQL query for inserting a new user must be same as database
-            string query = "INSERT INTO customer (first_name, last_name, phone_number, email) VALUES (@firstName, @lastName, @phoneNumber, @email)";
+  [Route("NewUserProfile")]
+  public JsonResult NewUserProfile([FromBody] UserProfile userProfile)
+  {
+      // Prepare the SQL query for inserting a new user
+      string query = @"INSERT INTO customer (first_name, last_name, phone_number, email, address, zip_code, date_of_birth) 
+                   VALUES (@firstName, @lastName, @phoneNumber, @email, @address, @zipCode, @formattedDate)";
 
-            // Create a new DataTable to store the result (although in this case, there's no result to store)
-            DataTable table = new DataTable();
+      // Get the connection string from appsettings.json
+      string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
 
-            // Get the connection string from appsettings.json
-            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+      // Open a connection to the database and execute the query
+      using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+      {
+          myCon.Open();
+          using (SqlCommand myCommand = new SqlCommand(query, myCon))
+          {
+              // Add parameters to the command to prevent SQL injection
+              myCommand.Parameters.AddWithValue("@firstName", userProfile.firstName);
+              myCommand.Parameters.AddWithValue("@lastName", userProfile.lastName);
+              myCommand.Parameters.AddWithValue("@phoneNumber", userProfile.phoneNumber);
+              myCommand.Parameters.AddWithValue("@email", userProfile.email);
+              myCommand.Parameters.AddWithValue("@address", userProfile.address);
+              myCommand.Parameters.AddWithValue("@zipCode", userProfile.zipCode);
+              myCommand.Parameters.AddWithValue("@formattedDate", userProfile.formattedDate);
 
-            // Open a connection to the database and execute the query
-            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-            {
-                myCon.Open();
-                using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                {
-                    // Add parameters to the command to prevent SQL injection
-                    myCommand.Parameters.AddWithValue("@firstName", userProfile.firstName);
-                    myCommand.Parameters.AddWithValue("@lastName", userProfile.lastName);
-                    myCommand.Parameters.AddWithValue("@phoneNumber", userProfile.phoneNumber);
-                    myCommand.Parameters.AddWithValue("@email", userProfile.email);
+              // Execute the query (which in this case is an INSERT operation)
+              myCommand.ExecuteNonQuery();
+          }
+      }
 
-
-                    // Execute the query (which in this case is an INSERT operation)
-                    myCommand.ExecuteNonQuery();
-                }
-            }
-
-            // Return a response indicating success
-            return new JsonResult("New user profile added successfully");
-        }
+      // Return a response indicating success
+      return new JsonResult("New user profile added successfully");
+  }
 
 
 
@@ -833,6 +833,165 @@ namespace BackEnd.Controllers
         }
 
 
+
+
+
+    [HttpGet]
+   [Route("GetEmployeeProfile")]
+   public JsonResult GetEmployeeProfile([FromQuery] int employeeId)
+   {
+       // Prepare the SQL query for retrieving employee data
+       string query = @"SELECT last_name, first_name, hire_date, emp_DoB, salary, email 
+                FROM employee WHERE emp_Id = @empId";
+
+       // Get the connection string from appsettings.json
+       string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+       EmployeeProfile employeeProfile = null;
+
+       // Open a connection to the database
+       using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+       {
+           myCon.Open();
+           using (SqlCommand myCommand = new SqlCommand(query, myCon))
+           {
+               // Add parameter to the command to prevent SQL injection
+               myCommand.Parameters.AddWithValue("@empId", employeeId);
+
+               using (SqlDataReader reader = myCommand.ExecuteReader())
+               {
+                   // Check if an employee was found
+                   if (reader.Read())
+                   {
+                       employeeProfile = new EmployeeProfile
+                       {
+                           lastName = reader["last_name"] as string ?? "",
+                           firstName = reader["first_name"] as string ?? "",
+                           hireDate = reader["hire_date"] != DBNull.Value ? Convert.ToDateTime(reader["hire_date"]) : default(DateTime),
+                           dob = reader["emp_DoB"] != DBNull.Value ? Convert.ToDateTime(reader["emp_DoB"]) : default(DateTime),
+                           salary = reader["salary"] != DBNull.Value ? Convert.ToDecimal(reader["salary"]) : 0,
+                           email = reader["email"] as string ?? ""
+                       };
+                   }
+               }
+           }
+       }
+
+       // Check if employee data was found and return appropriate result
+       if (employeeProfile != null)
+       {
+           return new JsonResult(employeeProfile);
+       }
+       else
+       {
+           return new JsonResult("Employee not found");
+       }
+   }
+
+
+    [HttpGet]
+   [Route("GetUserProfile")]
+   public JsonResult GetUserProfile([FromQuery] int customerId)
+   {
+       // Prepare the SQL query for retrieving user data
+       string query = @"SELECT first_name, last_name, phone_number, email, address, zip_code, date_of_birth 
+            FROM customer WHERE customer_Id = @customerId";
+
+
+       // Get the connection string from appsettings.json
+       string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+       UserProfile userProfile = null;
+
+       // Open a connection to the database
+       using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+       {
+           myCon.Open();
+           using (SqlCommand myCommand = new SqlCommand(query, myCon))
+           {
+               // Add parameter to the command to prevent SQL injection
+               // Correct the parameter name from @userId to @customerId
+               myCommand.Parameters.AddWithValue("@customerId", customerId);
+
+               using (SqlDataReader reader = myCommand.ExecuteReader())
+               {
+                   // Check if a user was found
+                   if (reader.Read())
+                   {
+                       userProfile = new UserProfile
+                       {
+                           firstName = reader["first_name"].ToString(),
+                           lastName = reader["last_name"].ToString(),
+                           phoneNumber = reader["phone_number"].ToString(),
+                           email = reader["email"].ToString(),
+                           address = reader["address"].ToString(),
+                           zipCode = reader["zip_code"].ToString(),
+                           formattedDate = Convert.ToDateTime(reader["date_of_birth"])
+                       };
+                   }
+               }
+           }
+
+       }
+
+       // Check if user data was found and return appropriate result
+       if (userProfile != null)
+       {
+           return new JsonResult(userProfile);
+       }
+       else
+       {
+           return new JsonResult("User not found");
+       }
+   }
+
+
+    [HttpPut]
+  [Route("UpdateUserProfile/{customerId}")]
+  public JsonResult UpdateUserProfile(int customerId, [FromBody] UserProfile userProfile)
+  {
+      string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+      string updateQuery = @"
+      UPDATE customer 
+      SET 
+          first_name = COALESCE(@firstName, first_name), 
+          last_name = COALESCE(@lastName, last_name),
+          phone_number = COALESCE(@phoneNumber, phone_number),
+          address = COALESCE(@address, address),
+          zip_code = COALESCE(@zipCode, zip_code),
+          date_of_birth = COALESCE(@formattedDate, date_of_birth)
+      WHERE customer_id = @customerId";
+
+      using (SqlConnection con = new SqlConnection(sqlDataSource))
+      {
+          con.Open();
+          using (SqlCommand command = new SqlCommand(updateQuery, con))
+          {
+              command.Parameters.AddWithValue("@customerId", customerId);
+              command.Parameters.AddWithValue("@firstName", (object)userProfile.firstName ?? DBNull.Value);
+              command.Parameters.AddWithValue("@lastName", (object)userProfile.lastName ?? DBNull.Value);
+              command.Parameters.AddWithValue("@phoneNumber", (object)userProfile.phoneNumber ?? DBNull.Value);
+              command.Parameters.AddWithValue("@address", (object)userProfile.address ?? DBNull.Value);
+              command.Parameters.AddWithValue("@zipCode", (object)userProfile.zipCode ?? DBNull.Value);
+              command.Parameters.AddWithValue("@formattedDate", (object)userProfile.formattedDate ?? DBNull.Value);
+
+              int effectedRows = command.ExecuteNonQuery();
+              if (effectedRows > 0)
+              {
+                  return new JsonResult("Profile updated successfully");
+              }
+              else
+              {
+                  return new JsonResult("No profile found or no changes detected");
+              }
+          }
+      }
+  }
+
+
+
+
+   
 
 
 

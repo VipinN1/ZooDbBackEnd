@@ -1123,11 +1123,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/omariftikhar/Desktop/BackEnd/BackEnd.csproj",
+      "projectUniqueName": "/Users/omariftikhar/Desktop/Zoo Backend/ZooDbBackEnd/BackEnd.csproj",
       "projectName": "BackEnd",
-      "projectPath": "/Users/omariftikhar/Desktop/BackEnd/BackEnd.csproj",
+      "projectPath": "/Users/omariftikhar/Desktop/Zoo Backend/ZooDbBackEnd/BackEnd.csproj",
       "packagesPath": "/Users/omariftikhar/.nuget/packages/",
-      "outputPath": "/Users/omariftikhar/Desktop/BackEnd/obj/",
+      "outputPath": "/Users/omariftikhar/Desktop/Zoo Backend/ZooDbBackEnd/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/Users/omariftikhar/.nuget/NuGet/NuGet.Config"
