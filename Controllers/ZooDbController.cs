@@ -121,7 +121,7 @@ namespace BackEnd.Controllers
         public JsonResult NewDiet([FromBody] Diet newDiet)
         {
             // Prepare SQL queries
-            string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
+            string checkAnimalExistsQuery = "SELECT animal_id FROM animal WHERE animal_name = @animalName AND animal_species = @animalSpecies AND animal_DoB = @animalDoB";
             string insertDietQuery = "INSERT INTO diet (animal_id, diet_name, diet_type, diet_schedule) VALUES (@animalID, @dietName, @dietType, @dietSchedule)";
             string updateDietQuery = "UPDATE diet SET diet_name = @dietName, diet_type = @dietType, diet_schedule = @dietSchedule WHERE animal_id = @animalID";
 
@@ -140,6 +140,7 @@ namespace BackEnd.Controllers
                 int animalId = 0;
                 using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery, myCon))
                 {
+                    checkAnimalCmd.Parameters.AddWithValue("@animalName", newDiet.animalName);
                     checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newDiet.animalSpecies);
                     checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newDiet.animalDoB);
 
@@ -179,65 +180,61 @@ namespace BackEnd.Controllers
 
 
         [HttpPost]
-        [Route("NewVetRecords")]
-        public JsonResult NewVetRecords([FromBody] VetRecords newVetRecords)
+[Route("NewVetRecords")]
+public JsonResult NewVetRecords([FromBody] VetRecords newVetRecords)
+{
+    // Prepare the SQL query for inserting a new user
+    string checkAnimalExistsQuery1 = "SELECT animal_id from animal WHERE animal_species = @animalSpecies AND animal_name = @animalName AND animal_DoB = @animalDoB";
+    string insertVetQuery = "INSERT INTO vet_records (animal_id,weight,height,diagnosis,medications) VALUES (@animalID, @weight, @height, @diagnosis, @medications)";
+    string updateVetQuery = "UPDATE vet_records SET weight = @weight, height = @height, diagnosis = @diagnosis, medications = @medications WHERE animal_id = @animalID";
+
+    // Get the connection string from appsettings.json
+    string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+    bool vetExists = false;
+
+    // Open a connection to the database and execute the query
+    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+    {
+        myCon.Open();
+        int animalId = 0;
+        using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery1, myCon))
         {
-            // Prepare the SQL query for inserting a new user
-            string checkAnimalExistsQuery1 = "SELECT animal_id from animal WHERE animal_species = @animalSpecies AND animal_DoB = @animalDoB";
-            string insertVetQuery = "INSERT INTO vet_records (animal_id,weight,height,diagnosis,medications) VALUES (@animalID, @weight, @height, @diagnosis, @medications)";
-            string updateVetQuery = "UPDATE vet_records SET weight = @weight, height = @height, diagnosis = @diagnosis, medications = @medications WHERE animal_id = @animalID";
+            // Add parameters to the command to prevent SQL injection
+            checkAnimalCmd.Parameters.AddWithValue("@animalName", newVetRecords.animalName); // Add animal name parameter
+            checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newVetRecords.animalSpecies);
+            checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newVetRecords.animalDoB);
 
-
-            // Get the connection string from appsettings.json
-            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-
-            bool vetExists = false;
-
-
-            // Open a connection to the database and execute the query
-            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-            {
-
-                myCon.Open();
-                int animalId = 0;
-                using (SqlCommand checkAnimalCmd = new SqlCommand(checkAnimalExistsQuery1, myCon))
-                {
-                    // Add parameters to the command to prevent SQL injection
-                    checkAnimalCmd.Parameters.AddWithValue("@animalSpecies", newVetRecords.animalSpecies);
-                    checkAnimalCmd.Parameters.AddWithValue("@animalDoB", newVetRecords.animalDoB);
-
-                    object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
-                    if (result != null)
-                        animalId = Convert.ToInt32(result);
-                    else
-                        return new JsonResult("No such animal found");
-                }
-
-
-                // Check if vet entry exists for this animal_id
-                using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
-                {
-                    checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
-                    vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
-                }
-
-                // Insert or update vet information
-                using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
-                {
-                    vetCmd.Parameters.AddWithValue("@animalID", animalId);
-                    vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
-                    vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
-                    vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
-                    vetCmd.Parameters.AddWithValue("@diagnosis", newVetRecords.diagnosis);
-
-                    vetCmd.ExecuteNonQuery();  // Execute either update or insert
-                }
-            }
-
-            // Return a response indicating success
-            return new JsonResult(vetExists ? "Vet updated successfully" : "New vet added successfully");
+            object result = checkAnimalCmd.ExecuteScalar();  // Use ExecuteScalar to get the first column of the first row
+            if (result != null)
+                animalId = Convert.ToInt32(result);
+            else
+                return new JsonResult("No such animal found");
         }
+
+        // Check if vet entry exists for this animal_id
+        using (SqlCommand checkVetCmd = new SqlCommand("SELECT COUNT(1) FROM vet_records WHERE animal_id = @animalID", myCon))
+        {
+            checkVetCmd.Parameters.AddWithValue("@animalID", animalId);
+            vetExists = (int)checkVetCmd.ExecuteScalar() > 0;
+        }
+
+        // Insert or update vet information
+        using (SqlCommand vetCmd = new SqlCommand(vetExists ? updateVetQuery : insertVetQuery, myCon))
+        {
+            vetCmd.Parameters.AddWithValue("@animalID", animalId);
+            vetCmd.Parameters.AddWithValue("@weight", newVetRecords.weight);
+            vetCmd.Parameters.AddWithValue("@height", newVetRecords.height);
+            vetCmd.Parameters.AddWithValue("@medications", newVetRecords.medications);
+            vetCmd.Parameters.AddWithValue("@diagnosis", newVetRecords.diagnosis);
+
+            vetCmd.ExecuteNonQuery();  // Execute either update or insert
+        }
+    }
+
+    // Return a response indicating success
+    return new JsonResult(vetExists ? "Vet updated successfully" : "New vet added successfully");
+}
 
 
 
@@ -281,44 +278,44 @@ namespace BackEnd.Controllers
 
 
         [HttpPost]
-        [Route("NewAnimal")]
-        public JsonResult NewAnimal([FromBody] Animal newAnimal)
+[Route("NewAnimal")]
+public JsonResult NewAnimal([FromBody] Animal newAnimal)
+{
+    // Prepare the SQL query for inserting a new user must be same as database
+    string query = "INSERT INTO animal (animal_name, animal_species, animal_gender, animal_DoB, animal_endangered, animal_DoA, animal_origin) VALUES (@animalName, @animalSpecies, @animalGender, @animalDoB, @animalEndangered, @animalDoA, @animalOrigin)";
+
+    // Create a new DataTable to store the result (although in this case, there's no result to store)
+    DataTable table = new DataTable();
+
+    // Get the connection string from appsettings.json
+    string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+    // Open a connection to the database and execute the query
+    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+    {
+        myCon.Open();
+        using (SqlCommand myCommand = new SqlCommand(query, myCon))
         {
-            // Prepare the SQL query for inserting a new user must be same as database
-            string query = "INSERT INTO animal (animal_name, animal_species, animal_gender, animal_DoB, animal_endangered, animal_DoA, animal_origin) VALUES (@animalName, @animalSpecies, @animalGender, @animalDoB, @animalEndangered, @animalDoA, @animalOrigin)";
-
-            // Create a new DataTable to store the result (although in this case, there's no result to store)
-            DataTable table = new DataTable();
-
-            // Get the connection string from appsettings.json
-            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
-
-            // Open a connection to the database and execute the query
-            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-            {
-                myCon.Open();
-                using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                {
-                    //Add parameters to the command to prevent SQL injection
-                    myCommand.Parameters.AddWithValue("@animalName", newAnimal.animalName);
-                    myCommand.Parameters.AddWithValue("@animalSpecies", newAnimal.animalSpecies);
-                    myCommand.Parameters.AddWithValue("@animalGender", newAnimal.animalGender);
-                    myCommand.Parameters.AddWithValue("@animalDoB", newAnimal.animalDoB);
-                    myCommand.Parameters.AddWithValue("@animalEndangered", newAnimal.animalEndangered);
-                    myCommand.Parameters.AddWithValue("@animalDoA", newAnimal.animalDoA);
-                    myCommand.Parameters.AddWithValue("@animalOrigin", newAnimal.animalOrigin);
+            //Add parameters to the command to prevent SQL injection
+            myCommand.Parameters.AddWithValue("@animalName", newAnimal.animalName);
+            myCommand.Parameters.AddWithValue("@animalSpecies", newAnimal.animalSpecies);
+            myCommand.Parameters.AddWithValue("@animalGender", newAnimal.animalGender);
+            myCommand.Parameters.AddWithValue("@animalDoB", newAnimal.animalDoB);
+            myCommand.Parameters.AddWithValue("@animalEndangered", newAnimal.animalEndangered);
+            myCommand.Parameters.AddWithValue("@animalDoA", newAnimal.animalDoA);
+            myCommand.Parameters.AddWithValue("@animalOrigin", newAnimal.animalOrigin);
 
 
 
 
-                    // Execute the query (which in this case is an INSERT operation)
-                    myCommand.ExecuteNonQuery();
-                }
-            }
-
-            // Return a response indicating success
-            return new JsonResult("New animal added");
+            // Execute the query (which in this case is an INSERT operation)
+            myCommand.ExecuteNonQuery();
         }
+    }
+
+    // Return a response indicating success
+    return new JsonResult("New animal added");
+}
 
 
 
@@ -1443,11 +1440,11 @@ namespace BackEnd.Controllers
 
 
         [HttpGet]
-        [Route("GetAllEnclosures")]
-        public JsonResult GetAllEnclosures()
+        [Route("GetAllEnclosureTypes")]
+        public JsonResult GetAllEnclosureTypes()
         {
-            // SQL query to retrieve all enclosures
-            string query = "SELECT * FROM enclosure";
+            // SQL query to retrieve all unique enclosure types
+            string query = "SELECT DISTINCT enclosure_type FROM enclosure";
 
             // Create a DataTable to store the results
             DataTable table = new DataTable();
@@ -1903,6 +1900,366 @@ namespace BackEnd.Controllers
           }
       }
   }
+
+
+
+
+[HttpPost]
+[Route("CheckDiscountStatus")] // This route can be accessed via POST at /api/Customer/CheckDiscountStatus
+public JsonResult CheckDiscountStatus([FromBody] DiscountRequest request)
+{
+    string query = "SELECT birthday_discount FROM customer WHERE customer_id = @CustomerId";
+    DataTable table = new DataTable();
+    string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+    SqlDataReader myReader;
+
+    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+    {
+        myCon.Open();
+        using (SqlCommand myCommand = new SqlCommand(query, myCon))
+        {
+            myCommand.Parameters.AddWithValue("@CustomerId", request.CustomerId);
+
+            myReader = myCommand.ExecuteReader();
+            table.Load(myReader);
+            myReader.Close();
+            myCon.Close();
+        }
+    }
+
+    bool discountApplied = false;
+    string message = "No discount applied.";
+    if (table.Rows.Count > 0)
+    {
+        discountApplied = (bool)table.Rows[0]["birthday_discount"];
+        if (discountApplied)
+        {
+            message = "Special birthday discount applied!";
+        }
+    }
+
+    return new JsonResult(new { DiscountApplied = discountApplied, Message = message });
+}
+
+
+
+    public class CustomerUpdateRequest
+{
+    public int CustomerId { get; set; }
+}
+
+
+
+    [HttpPut]
+    [Route("logging-in")]
+    public JsonResult ModifyLoggingIn([FromBody] CustomerUpdateRequest request)
+    {
+        // Prepare the SQL query to update logging_in attribute
+        string query = @"
+            UPDATE customer
+            SET logging_in = 1
+            WHERE customer_id = @CustomerId";
+
+        // Get the connection string from appsettings.json
+        string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+        try
+        {
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                {
+                    // Add customerId parameter to the query
+                    myCommand.Parameters.AddWithValue("@CustomerId", request.CustomerId);
+
+                    // Execute the update query
+                    int rowsAffected = myCommand.ExecuteNonQuery();
+
+                    if (rowsAffected > 0)
+                    {
+                        return new JsonResult(new { message = "Logging_in attribute updated successfully." });
+                    }
+                    else
+                    {
+                        // If no rows were affected, the customer with provided ID was not found
+                        return new JsonResult(new { message = "Customer not found.", status = 404 });
+                    }
+                }
+            }
+        }
+        catch (SqlException ex)
+        {
+            // Handle SQL errors
+            Console.WriteLine("SQL Error updating logging_in attribute: " + ex.Message);
+            return new JsonResult(new { error = "SQL error occurred while updating logging_in attribute.", details = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            // Handle other errors
+            Console.WriteLine("Error updating logging_in attribute: " + ex.Message);
+            return new JsonResult(new { error = "Failed to update logging_in attribute.", details = ex.Message });
+        }
+    }
+    
+
+
+    [HttpPut]
+    [Route("logging-out")]
+    public JsonResult ModifyLoggingOut([FromBody] CustomerUpdateRequest request)
+    {
+        // Prepare the SQL query to update logging_in attribute
+        string query = @"
+            UPDATE customer
+            SET logging_in = 0
+            WHERE customer_id = @CustomerId";
+
+        // Get the connection string from appsettings.json
+        string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+        try
+        {
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                {
+                    // Add customerId parameter to the query
+                    myCommand.Parameters.AddWithValue("@CustomerId", request.CustomerId);
+
+                    // Execute the update query
+                    int rowsAffected = myCommand.ExecuteNonQuery();
+
+                    if (rowsAffected > 0)
+                    {
+                        return new JsonResult(new { message = "Logging_in attribute updated successfully." });
+                    }
+                    else
+                    {
+                        // If no rows were affected, the customer with provided ID was not found
+                        return new JsonResult(new { message = "Customer not found.", status = 404 });
+                    }
+                }
+            }
+        }
+        catch (SqlException ex)
+        {
+            // Handle SQL errors
+            Console.WriteLine("SQL Error updating logging_in attribute: " + ex.Message);
+            return new JsonResult(new { error = "SQL error occurred while updating logging_in attribute.", details = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            // Handle other errors
+            Console.WriteLine("Error updating logging_in attribute: " + ex.Message);
+            return new JsonResult(new { error = "Failed to update logging_in attribute.", details = ex.Message });
+        }
+    }
+
+
+
+        [HttpGet]
+        [Route("GetAllAnimalSpecies")]
+        public JsonResult GetAllAnimalSpecies()
+        {
+            // SQL query to retrieve all unique animal species
+            string query = "SELECT DISTINCT animal_species FROM animal";
+
+            // Create a DataTable to store the results
+            DataTable table = new DataTable();
+
+            // Get the connection string from appsettings.json
+            string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+            // Open a connection to the database and execute the query
+            using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+            {
+                myCon.Open();
+                using (SqlCommand myCommand = new SqlCommand(query, myCon))
+                {
+                    // Execute the query and load the results into the DataTable
+                    SqlDataReader myReader = myCommand.ExecuteReader();
+                    table.Load(myReader);
+
+                    // Close the reader and connection
+                    myReader.Close();
+                    myCon.Close();
+                }
+            }
+
+            // Return the DataTable as a JSON response
+            return new JsonResult(table);
+        }
+
+        [HttpPost]
+[Route("RevenueReport")]
+public IActionResult FetchTransactions(FilterModel filters)
+{
+    try
+    {
+        string baseQuery = string.Empty;
+        string dateFilter = string.Empty;
+
+        // Adjust date filtering logic for "All" transaction type
+        if (filters.StartDate.HasValue && filters.EndDate.HasValue)
+        {
+            if (filters.TransactionType == "all")
+            {
+                dateFilter = @"
+                    AND (
+                        (TransactionType = 'Donation' AND donation_date BETWEEN @dateRangeStart AND @dateRangeEnd)
+                        OR
+                        (TransactionType = 'Ticket Purchase' AND visit_date BETWEEN @dateRangeStart AND @dateRangeEnd)
+                    )";
+            }
+            else
+            {
+                // Ensure correct date column is used based on transaction type
+                string dateColumn = filters.TransactionType == "donation" ? "d.donation_date" : "tp.visit_date";
+                dateFilter = $" AND {dateColumn} BETWEEN @dateRangeStart AND @dateRangeEnd";
+            }
+        }
+
+        // Select base query according to transaction type
+        switch (filters.TransactionType)
+        {
+            case "all":
+                baseQuery = @"
+                    SELECT CustomerName, TransactionType, TransactionDate, Amount, AdultTickets, ChildTickets, SeniorTickets, InfantTickets
+                    FROM (
+                        SELECT 
+                            c.first_name + ' ' + c.last_name AS CustomerName, 
+                            'Ticket Purchase' AS TransactionType, 
+                            tp.visit_date AS TransactionDate, 
+                            tp.total_cost AS Amount,
+                            tp.adult_tickets AS AdultTickets,
+                            tp.child_tickets AS ChildTickets,
+                            tp.senior_tickets AS SeniorTickets,
+                            tp.infant_tickets AS InfantTickets
+                        FROM customer c
+                        LEFT JOIN ticket_purchase tp ON c.customer_id = tp.customer_id
+                        WHERE tp.visit_date IS NOT NULL
+                        UNION ALL
+                        SELECT 
+                            c.first_name + ' ' + c.last_name AS CustomerName, 
+                            'Donation' AS TransactionType, 
+                            d.donation_date AS TransactionDate, 
+                            d.donation_amount AS Amount,
+                            NULL AS AdultTickets,
+                            NULL AS ChildTickets,
+                            NULL AS SeniorTickets,
+                            NULL AS InfantTickets
+                        FROM customer c
+                        LEFT JOIN donations d ON c.customer_id = d.customer_id
+                        WHERE d.donation_date IS NOT NULL
+                    ) AS Combined
+                    WHERE 1=1 ";
+                break;
+
+            case "ticket":
+                baseQuery = @"
+                    SELECT 
+                        c.first_name + ' ' + c.last_name AS CustomerName, 
+                        'Ticket Purchase' AS TransactionType, 
+                        tp.visit_date AS TransactionDate, 
+                        tp.total_cost AS Amount,
+                        tp.adult_tickets AS AdultTickets,
+                        tp.child_tickets AS ChildTickets,
+                        tp.senior_tickets AS SeniorTickets,
+                        tp.infant_tickets AS InfantTickets
+                    FROM customer c
+                    LEFT JOIN ticket_purchase tp ON c.customer_id = tp.customer_id
+                    WHERE tp.visit_date IS NOT NULL";
+                break;
+
+            case "donation":
+                baseQuery = @"
+                    SELECT 
+                        c.first_name + ' ' + c.last_name AS CustomerName, 
+                        'Donation' AS TransactionType, 
+                        d.donation_date AS TransactionDate, 
+                        d.donation_amount AS Amount,
+                        NULL AS AdultTickets,
+                        NULL AS ChildTickets,
+                        NULL AS SeniorTickets,
+                        NULL AS InfantTickets
+                    FROM customer c
+                    LEFT JOIN donations d ON c.customer_id = d.customer_id
+                    WHERE d.donation_date IS NOT NULL";
+                break;
+
+            default:
+                return BadRequest("Invalid transaction type.");
+        }
+
+        // Append the date filter to the main query
+        string finalQuery = baseQuery + dateFilter + " ORDER BY TransactionDate, CustomerName";
+
+        DataTable table = new DataTable();
+        string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+        using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+        {
+            myCon.Open();
+            using (SqlCommand myCommand = new SqlCommand(finalQuery, myCon))
+            {
+                if (filters.StartDate.HasValue && filters.EndDate.HasValue)
+                {
+                    myCommand.Parameters.AddWithValue("@dateRangeStart", filters.StartDate.Value);
+                    myCommand.Parameters.AddWithValue("@dateRangeEnd", filters.EndDate.Value);
+                }
+
+                SqlDataAdapter dataAdapter = new SqlDataAdapter(myCommand);
+                dataAdapter.Fill(table);
+            }
+        }
+
+        List<dynamic> transactions = ConvertToDynamicList(table);
+        return Ok(transactions);
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+    }
+}
+
+private List<dynamic> ConvertToDynamicList(DataTable table)
+{
+    List<dynamic> transactions = new List<dynamic>();
+    foreach (DataRow row in table.Rows)
+    {
+        dynamic transaction = new ExpandoObject();
+        transaction.CustomerName = row["CustomerName"];
+        transaction.TransactionType = row["TransactionType"];
+        transaction.TransactionDate = row["TransactionDate"] != DBNull.Value ? (DateTime?)row["TransactionDate"] : null;
+        transaction.Amount = row["Amount"] != DBNull.Value ? (decimal)row["Amount"] : 0;
+        if (transaction.TransactionType == "Ticket Purchase")
+        {
+            transaction.AdultTickets = row["AdultTickets"] != DBNull.Value ? (int?)row["AdultTickets"] : null;
+            transaction.ChildTickets = row["ChildTickets"] != DBNull.Value ? (int?)row["ChildTickets"] : null;
+            transaction.SeniorTickets = row["SeniorTickets"] != DBNull.Value ? (int?)row["SeniorTickets"] : null;
+            transaction.InfantTickets = row["InfantTickets"] != DBNull.Value ? (int?)row["InfantTickets"] : null;
+        }
+        transactions.Add(transaction);  // Correct usage of Add method
+    }
+    return transactions;
+}
+
+
+
+        
+
+
+
+
+
+
+    
+
+
 
 
 
