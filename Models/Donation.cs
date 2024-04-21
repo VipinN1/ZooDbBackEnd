@@ -6,5 +6,7 @@ namespace BackEnd.Models
         public int customerId { get; set; }
         public DateTime donationDate { get; set; }
 
+        public string donatedName { get; set; }
+
     }
 }

@@ -448,39 +448,39 @@ public JsonResult NewAnimal([FromBody] Animal newAnimal)
         }
 
 
-                [HttpPost]
-                [Route("NewDonation")]
-                public JsonResult NewDonation([FromBody] Donation userDonation)
-                {
-                    // Prepare the SQL query for inserting a new user must be same as database
-                    string query = "INSERT INTO donations (donation_amount, customer_id, donation_date) VALUES (@donationAmount, @customerId, @donationDate)";
+               [HttpPost]
+ [Route("NewDonation")]
+ public JsonResult NewDonation([FromBody] Donation userDonation)
+ {
+     // Prepare the SQL query for inserting a new donation with the donatedName included
+     string query = "INSERT INTO donations (donation_amount, customer_id, donation_date, donatedName) VALUES (@donationAmount, @customerId, @donationDate, @donatedName)";
 
-                    // Create a new DataTable to store the result (although in this case, there's no result to store)
-                    DataTable table = new DataTable();
+     // Create a new DataTable to store the result (although in this case, there's no result to store)
+     DataTable table = new DataTable();
 
-                    // Get the connection string from appsettings.json
-                    string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+     // Get the connection string from appsettings.json
+     string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
 
-                    // Open a connection to the database and execute the query
-                    using (SqlConnection myCon = new SqlConnection(sqlDataSource))
-                    {
-                        myCon.Open();
-                        using (SqlCommand myCommand = new SqlCommand(query, myCon))
-                        {
-                            // Add parameters to the command to prevent SQL injection
-                            myCommand.Parameters.AddWithValue("@donationAmount", userDonation.donationAmount);
-                            myCommand.Parameters.AddWithValue("@customerId", userDonation.customerId);
-                            myCommand.Parameters.AddWithValue("@donationDate", userDonation.donationDate);
+     // Open a connection to the database and execute the query
+     using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+     {
+         myCon.Open();
+         using (SqlCommand myCommand = new SqlCommand(query, myCon))
+         {
+             // Add parameters to the command to prevent SQL injection
+             myCommand.Parameters.AddWithValue("@donationAmount", userDonation.donationAmount);
+             myCommand.Parameters.AddWithValue("@customerId", userDonation.customerId);
+             myCommand.Parameters.AddWithValue("@donationDate", userDonation.donationDate);
+             myCommand.Parameters.AddWithValue("@donatedName", userDonation.donatedName ?? (object)DBNull.Value); // Handle potential null value for donatedName
 
+             // Execute the query (which in this case is an INSERT operation)
+             myCommand.ExecuteNonQuery();
+         }
+     }
 
-                            // Execute the query (which in this case is an INSERT operation)
-                            myCommand.ExecuteNonQuery();
-                        }
-                    }
-
-                    // Return a response indicating success
-                    return new JsonResult("New donation added successfully");
-                }
+     // Return a response indicating success
+     return new JsonResult("New donation added successfully");
+ }
 
 
                 [HttpPost]
@@ -2247,6 +2247,42 @@ private List<dynamic> ConvertToDynamicList(DataTable table)
     }
     return transactions;
 }
+
+
+
+    [HttpGet]
+  [Route("GetDonatedNames")]
+  public JsonResult GetDonatedNames()
+  {
+      string query = @"SELECT donated_name FROM DonatedNames";
+      string sqlDataSource = _configuration.GetConnectionString("ZooDBConnection");
+
+      List<string> donatedNames = new List<string>();
+
+      using (SqlConnection myCon = new SqlConnection(sqlDataSource))
+      {
+          myCon.Open();
+          using (SqlCommand myCommand = new SqlCommand(query, myCon))
+          {
+              using (SqlDataReader reader = myCommand.ExecuteReader())
+              {
+                  while (reader.Read())
+                  {
+                      donatedNames.Add(reader["donated_name"].ToString());
+                  }
+              }
+          }
+      }
+
+      if (donatedNames.Count > 0)
+      {
+          return new JsonResult(donatedNames);
+      }
+      else
+      {
+          return new JsonResult("No donated names found");
+      }
+  }
 
 
 
